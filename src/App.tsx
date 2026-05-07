@@ -33,6 +33,7 @@ interface Habit {
   xp: number;
   streak: number;
   completedDates: string[]; // YYYY-MM-DD
+  group?: string;
 }
 
 interface Achievement {
@@ -58,38 +59,45 @@ interface UserData {
 // --- Constants & Initial Data ---
 const LEVEL_XP = 100;
 
+const HABIT_GROUPS = [
+  { id: 'morning', name: 'MAÑANA', icon: '🌅', color: 'text-yellow-400' },
+  { id: 'midday', name: 'MEDIODÍA', icon: '☀️', color: 'text-orange-400' },
+  { id: 'afternoon', name: 'TARDE', icon: '🌇', color: 'text-blue-400' },
+  { id: 'night', name: 'NOCHE', icon: '🌙', color: 'text-purple-400' },
+];
+
 const INITIAL_HABITS: Habit[] = [
   // 🌅 MAÑANA - Autocuidado
-  { id: '1', name: 'Respiración + afirmaciones', icon: '🌬️', xp: 10, streak: 0, completedDates: [] },
-  { id: '2', name: 'Caminar / ejercicio', icon: '🏃', xp: 25, streak: 0, completedDates: [] },
-  { id: '3', name: 'Ducha + suplementos', icon: '🚿', xp: 10, streak: 0, completedDates: [] },
-  { id: '4', name: 'Meditación', icon: '🧘', xp: 15, streak: 0, completedDates: [] },
-  { id: '5', name: 'Lectura rápida', icon: '📖', xp: 15, streak: 0, completedDates: [] },
-  { id: '6', name: 'Repaso tareas días', icon: '📋', xp: 10, streak: 0, completedDates: [] },
-  { id: '7', name: 'INBOX → Notion', icon: '📥', xp: 15, streak: 0, completedDates: [] },
-  { id: '8', name: 'Elegir 3 tareas activas', icon: '🎯', xp: 10, streak: 0, completedDates: [] },
-  { id: '9', name: 'Reflexión + planificar día', icon: '🤔', xp: 15, streak: 0, completedDates: [] },
+  { id: '1', name: 'Respiración + afirmaciones', icon: '🌬️', xp: 10, streak: 0, completedDates: [], group: 'morning' },
+  { id: '2', name: 'Caminar / ejercicio', icon: '🏃', xp: 25, streak: 0, completedDates: [], group: 'morning' },
+  { id: '3', name: 'Ducha + suplementos', icon: '🚿', xp: 10, streak: 0, completedDates: [], group: 'morning' },
+  { id: '4', name: 'Meditación', icon: '🧘', xp: 15, streak: 0, completedDates: [], group: 'morning' },
+  { id: '5', name: 'Lectura rápida', icon: '📖', xp: 15, streak: 0, completedDates: [], group: 'morning' },
+  { id: '6', name: 'Repaso tareas días', icon: '📋', xp: 10, streak: 0, completedDates: [], group: 'morning' },
+  { id: '7', name: 'INBOX → Notion', icon: '📥', xp: 15, streak: 0, completedDates: [], group: 'morning' },
+  { id: '8', name: 'Elegir 3 tareas activas', icon: '🎯', xp: 10, streak: 0, completedDates: [], group: 'morning' },
+  { id: '9', name: 'Reflexión + planificar día', icon: '🤔', xp: 15, streak: 0, completedDates: [], group: 'morning' },
 
   // ☀️ MEDIODÍA - Primer Bloque Trabajo
-  { id: '10', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [] },
-  { id: '11', name: 'Buffer / preparación', icon: '⚙️', xp: 10, streak: 0, completedDates: [] },
-  { id: '12', name: '🔥 Bloque trabajo 1', icon: '🔥', xp: 30, streak: 0, completedDates: [] },
-  { id: '13', name: '🔥 Bloque trabajo 2', icon: '🔥', xp: 30, streak: 0, completedDates: [] },
-  { id: '14', name: 'Comida ligera', icon: '🥗', xp: 10, streak: 0, completedDates: [] },
-  { id: '15', name: 'Siesta (si necesaria)', icon: '😴', xp: 10, streak: 0, completedDates: [] },
+  { id: '10', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [], group: 'midday' },
+  { id: '11', name: 'Buffer / preparación', icon: '⚙️', xp: 10, streak: 0, completedDates: [], group: 'midday' },
+  { id: '12', name: '🔥 Bloque trabajo 1', icon: '🔥', xp: 30, streak: 0, completedDates: [], group: 'midday' },
+  { id: '13', name: '🔥 Bloque trabajo 2', icon: '🔥', xp: 30, streak: 0, completedDates: [], group: 'midday' },
+  { id: '14', name: 'Comida ligera', icon: '🥗', xp: 10, streak: 0, completedDates: [], group: 'midday' },
+  { id: '15', name: 'Siesta (si necesaria)', icon: '😴', xp: 10, streak: 0, completedDates: [], group: 'midday' },
 
   // 🌇 TARDE - Segundo Bloque
-  { id: '16', name: '🌀 Bloque trabajo 3', icon: '🌀', xp: 30, streak: 0, completedDates: [] },
-  { id: '17', name: '🌀 Bloque trabajo 4', icon: '🌀', xp: 30, streak: 0, completedDates: [] },
-  { id: '18', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [] },
-  { id: '19', name: '📝 Estatus diario', icon: '📊', xp: 15, streak: 0, completedDates: [] },
-  { id: '20', name: '🧠 Vaciar Cabeza → Notion', icon: '🧠', xp: 20, streak: 0, completedDates: [] },
+  { id: '16', name: '🌀 Bloque trabajo 3', icon: '🌀', xp: 30, streak: 0, completedDates: [], group: 'afternoon' },
+  { id: '17', name: '🌀 Bloque trabajo 4', icon: '🌀', xp: 30, streak: 0, completedDates: [], group: 'afternoon' },
+  { id: '18', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [], group: 'afternoon' },
+  { id: '19', name: '📝 Estatus diario', icon: '📊', xp: 15, streak: 0, completedDates: [], group: 'afternoon' },
+  { id: '20', name: '🧠 Vaciar Cabeza → Notion', icon: '🧠', xp: 20, streak: 0, completedDates: [], group: 'afternoon' },
 
   // 🌙 NOCHE - Reflexión + Cierre
-  { id: '21', name: '🚫 Móvil OFF', icon: '📵', xp: 10, streak: 0, completedDates: [] },
-  { id: '22', name: '✨ 5 cosas buenas del día', icon: '✨', xp: 15, streak: 0, completedDates: [] },
-  { id: '23', name: '📖 Leer compendio', icon: '📚', xp: 15, streak: 0, completedDates: [] },
-  { id: '24', name: '🛌 Preparar dormir', icon: '🛌', xp: 10, streak: 0, completedDates: [] },
+  { id: '21', name: '🚫 Móvil OFF', icon: '📵', xp: 10, streak: 0, completedDates: [], group: 'night' },
+  { id: '22', name: '✨ 5 cosas buenas del día', icon: '✨', xp: 15, streak: 0, completedDates: [], group: 'night' },
+  { id: '23', name: '📖 Leer compendio', icon: '📚', xp: 15, streak: 0, completedDates: [], group: 'night' },
+  { id: '24', name: '🛌 Preparar dormir', icon: '🛌', xp: 10, streak: 0, completedDates: [], group: 'night' },
 ];
 
 const ACHIEVEMENTS: Achievement[] = [
@@ -124,6 +132,8 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showAddHabit, setShowAddHabit] = useState(false);
   const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25 });
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [showHabitManager, setShowHabitManager] = useState(false);
 
   // --- Effects ---
   useEffect(() => {
@@ -228,9 +238,26 @@ export default function App() {
       icon,
       xp,
       streak: 0,
-      completedDates: []
+      completedDates: [],
+      group: 'morning'
     };
     setUserData(prev => ({ ...prev, habits: [...prev.habits, newHabit] }));
+  };
+
+  const editHabit = (id: string, updates: Partial<Habit>) => {
+    setUserData(prev => ({
+      ...prev,
+      habits: prev.habits.map(h => h.id === id ? { ...h, ...updates } : h)
+    }));
+  };
+
+  const deleteHabit = (id: string) => {
+    if (confirm('¿Eliminar esta misión?')) {
+      setUserData(prev => ({
+        ...prev,
+        habits: prev.habits.filter(h => h.id !== id)
+      }));
+    }
   };
 
   const exportData = () => {
@@ -318,33 +345,48 @@ export default function App() {
           <h3 className="font-heading font-bold text-lg">Misiones de Hoy</h3>
           <span className="text-xs text-rpg-text-secondary">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
         </div>
-        
-        <div className="space-y-3">
-          {userData.habits.map(habit => {
-            const completed = habit.completedDates.includes(today);
+
+        <div className="space-y-6">
+          {HABIT_GROUPS.map(group => {
+            const groupHabits = userData.habits.filter(h => h.group === group.id);
+            if (groupHabits.length === 0) return null;
+            const completed = groupHabits.filter(h => h.completedDates.includes(today)).length;
+            const total = groupHabits.length;
+
             return (
-              <motion.div 
-                key={habit.id}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => toggleHabit(habit.id)}
-                className={`rpg-card p-4 flex items-center gap-4 transition-all ${completed ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
-              >
-                <div className="text-2xl">{habit.icon}</div>
-                <div className="flex-1">
-                  <h4 className={`font-semibold ${completed ? 'line-through' : ''}`}>{habit.name}</h4>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-cyan-400 font-bold">+{habit.xp} XP</span>
-                    <span className="text-[10px] text-orange-400 font-bold flex items-center gap-0.5">
-                      <Flame size={10} /> {habit.streak}
-                    </span>
+              <div key={group.id}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{group.icon}</span>
+                    <h4 className={`font-bold text-sm uppercase tracking-wider ${group.color}`}>{group.name}</h4>
                   </div>
+                  <span className="text-xs text-rpg-text-secondary">{completed}/{total}</span>
                 </div>
-                {completed ? (
-                  <CheckCircle2 className="text-green-500" size={28} />
-                ) : (
-                  <Circle className="text-white/20" size={28} />
-                )}
-              </motion.div>
+                <div className="space-y-2">
+                  {groupHabits.map(habit => {
+                    const isCompleted = habit.completedDates.includes(today);
+                    return (
+                      <motion.div
+                        key={habit.id}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => toggleHabit(habit.id)}
+                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
+                      >
+                        <div className="text-xl">{habit.icon}</div>
+                        <div className="flex-1">
+                          <h5 className={`text-sm font-medium ${isCompleted ? 'line-through opacity-70' : ''}`}>{habit.name}</h5>
+                        </div>
+                        <span className="text-[10px] text-cyan-400 font-bold">+{habit.xp}</span>
+                        {isCompleted ? (
+                          <CheckCircle2 className="text-green-500" size={20} />
+                        ) : (
+                          <Circle className="text-white/20" size={20} />
+                        )}
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              </div>
             )
           })}
         </div>
@@ -519,6 +561,66 @@ export default function App() {
         </div>
       </div>
 
+      {/* Gestionar Misiones */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-heading font-bold text-lg">Gestionar Misiones</h3>
+          <button
+            onClick={() => setShowAddHabit(true)}
+            className="flex items-center gap-1 bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-cyan-500/30 transition-colors"
+          >
+            <Plus size={14} /> Nueva
+          </button>
+        </div>
+        <div className="rpg-card p-1">
+          {HABIT_GROUPS.map(group => {
+            const groupHabits = userData.habits.filter(h => h.group === group.id);
+            if (groupHabits.length === 0) return null;
+            return (
+              <div key={group.id}>
+                <div className="px-4 py-2 flex items-center gap-2">
+                  <span className="text-sm">{group.icon}</span>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${group.color}`}>{group.name}</span>
+                </div>
+                {groupHabits.map((habit, idx) => (
+                  <div key={habit.id}>
+                    {idx > 0 && <div className="h-px bg-white/5 mx-4" />}
+                    <div className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition-colors group">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{habit.icon}</span>
+                        <div>
+                          <span className="text-sm font-medium">{habit.name}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-rpg-text-secondary">
+                            <span className="text-cyan-400">+{habit.xp} XP</span>
+                            <span>🔥 {habit.streak}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setEditingHabit(habit)}
+                          className="p-2 hover:bg-white/10 rounded-lg text-rpg-text-secondary hover:text-white"
+                          title="Editar"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button
+                          onClick={() => deleteHabit(habit.id)}
+                          className="p-2 hover:bg-red-500/20 rounded-lg text-rpg-text-secondary hover:text-red-400"
+                          title="Eliminar"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex justify-center flex-col items-center text-[10px] text-rpg-text-secondary gap-2 pt-8">
         <p>HABITQUEST v1.0.0</p>
         <p>100% OFFLINE & PRIVADO</p>
@@ -632,7 +734,7 @@ export default function App() {
           </motion.div>
         )}
 
-        {showAddHabit && (
+        {(showAddHabit || editingHabit) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -649,8 +751,10 @@ export default function App() {
               <div className="absolute top-0 inset-x-0 h-1 rpg-gradient" />
 
               <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold text-xl rpg-gradient-text">Nueva Misión</h3>
-                <button onClick={() => setShowAddHabit(false)} className="text-rpg-text-secondary hover:text-white">
+                <h3 className="font-heading font-bold text-xl rpg-gradient-text">
+                  {editingHabit ? 'Editar Misión' : 'Nueva Misión'}
+                </h3>
+                <button onClick={() => { setShowAddHabit(false); setEditingHabit(null); }} className="text-rpg-text-secondary hover:text-white">
                   ✕
                 </button>
               </div>
@@ -660,8 +764,10 @@ export default function App() {
                   <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Nombre</label>
                   <input
                     type="text"
-                    value={newHabit.name}
-                    onChange={(e) => setNewHabit(prev => ({ ...prev, name: e.target.value }))}
+                    value={editingHabit ? editingHabit.name : newHabit.name}
+                    onChange={(e) => editingHabit
+                      ? setEditingHabit(prev => prev ? { ...prev, name: e.target.value } : null)
+                      : setNewHabit(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="Ej: Hacer ejercicio 30 min"
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50"
                     maxLength={40}
@@ -671,46 +777,85 @@ export default function App() {
                 <div>
                   <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Icono</label>
                   <div className="flex gap-2 flex-wrap">
-                    {['📚', '🧘', '💧', '🏃', '💪', '🥗', '😴', '📝', '🎯', '🧠', '🎨', '🎵', '✨', '⭐', '🔥'].map(icon => (
-                      <button
-                        key={icon}
-                        onClick={() => setNewHabit(prev => ({ ...prev, icon }))}
-                        className={`w-10 h-10 text-xl rounded-lg flex items-center justify-center transition-all ${newHabit.icon === icon ? 'bg-cyan-500/30 ring-2 ring-cyan-500' : 'bg-black/40 hover:bg-white/10'}`}
-                      >
-                        {icon}
-                      </button>
-                    ))}
+                    {['📚', '🧘', '💧', '🏃', '💪', '🥗', '😴', '📝', '🎯', '🧠', '🎨', '🎵', '✨', '⭐', '🔥', '🌬️', '🚿', '📋', '📥', '🤔', '⚙️', '🌀', '📵', '🛌'].map(icon => {
+                      const currentIcon = editingHabit ? editingHabit.icon : newHabit.icon;
+                      return (
+                        <button
+                          key={icon}
+                          onClick={() => editingHabit
+                            ? setEditingHabit(prev => prev ? { ...prev, icon } : null)
+                            : setNewHabit(prev => ({ ...prev, icon }))}
+                          className={`w-9 h-9 text-lg rounded-lg flex items-center justify-center transition-all ${currentIcon === icon ? 'bg-cyan-500/30 ring-2 ring-cyan-500' : 'bg-black/40 hover:bg-white/10'}`}
+                        >
+                          {icon}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div>
                   <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">XP por completar</label>
                   <div className="flex gap-2">
-                    {[15, 25, 30, 40, 50].map(xp => (
-                      <button
-                        key={xp}
-                        onClick={() => setNewHabit(prev => ({ ...prev, xp }))}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newHabit.xp === xp ? 'bg-cyan-500/30 text-cyan-400 ring-2 ring-cyan-500' : 'bg-black/40 text-rpg-text-secondary hover:bg-white/10'}`}
-                      >
-                        {xp}
-                      </button>
-                    ))}
+                    {[10, 15, 20, 25, 30, 40, 50].map(xp => {
+                      const currentXp = editingHabit ? editingHabit.xp : newHabit.xp;
+                      return (
+                        <button
+                          key={xp}
+                          onClick={() => editingHabit
+                            ? setEditingHabit(prev => prev ? { ...prev, xp } : null)
+                            : setNewHabit(prev => ({ ...prev, xp }))}
+                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${currentXp === xp ? 'bg-cyan-500/30 text-cyan-400 ring-2 ring-cyan-500' : 'bg-black/40 text-rpg-text-secondary hover:bg-white/10'}`}
+                        >
+                          {xp}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Grupo</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {HABIT_GROUPS.map(group => {
+                      const currentGroup = editingHabit ? editingHabit.group : 'morning';
+                      return (
+                        <button
+                          key={group.id}
+                          onClick={() => editingHabit
+                            ? setEditingHabit(prev => prev ? { ...prev, group: group.id } : null)
+                            : null}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${currentGroup === group.id ? `${group.color} bg-white/10 ring-2 ring-white/30` : 'bg-black/40 text-rpg-text-secondary hover:bg-white/10'}`}
+                        >
+                          <span>{group.icon}</span>
+                          <span>{group.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
               <button
                 onClick={() => {
-                  if (newHabit.name.trim()) {
-                    addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp);
-                    setNewHabit({ name: '', icon: '✨', xp: 25 });
-                    setShowAddHabit(false);
+                  if (editingHabit) {
+                    if (editingHabit.name.trim()) {
+                      editHabit(editingHabit.id, { name: editingHabit.name.trim(), icon: editingHabit.icon, xp: editingHabit.xp, group: editingHabit.group });
+                      setEditingHabit(null);
+                      setShowAddHabit(false);
+                    }
+                  } else {
+                    if (newHabit.name.trim()) {
+                      addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp);
+                      setNewHabit({ name: '', icon: '✨', xp: 25 });
+                      setShowAddHabit(false);
+                    }
                   }
                 }}
-                disabled={!newHabit.name.trim()}
+                disabled={editingHabit ? !editingHabit.name.trim() : !newHabit.name.trim()}
                 className="w-full rpg-gradient py-3 rounded-xl font-bold uppercase text-xs tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Crear Misión
+                {editingHabit ? 'Guardar Cambios' : 'Crear Misión'}
               </button>
             </motion.div>
           </motion.div>
