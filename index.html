@@ -1,13 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>HabitQuest - RPG Fitness</title>
+    <meta name="description" content="Gamifica tus hábitos personales con HabitQuest" />
+    <meta name="theme-color" content="#1A1B2F" />
+    <link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/avataaars/svg?seed=Quest" />
+    
+    <!-- PWA Manifest Inline Simulator -->
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkhhYml0UXVlc3QiLAogICJzaG9ydF9uYW1lIjogIkhhYml0UXVlc3QiLAogICJzdGFydF91cmwiOiAiLi8iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMxQTFCMkYiLAogICJ0aGVtZV9jb2xvciI6ICIjRkZCNjRCIiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiaHR0cHM6Ly9hcGkuZGljZWJlYXIuY29tLzd4L2F2YXRhYWFycy9zdmc/c2VlZD1RdWVzdCIsCiAgICAgICJzaXplcyI6ICI1MTJ4NTEyIiwKICAgICAgInR5cGUiOiAiaW1hZ2Uvc3ZnK3htbCIKICAgIH0KICBdCn0=" />
+    
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Service Worker Inline for Offline Support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW register error', err));
+        });
+      }
+    </script>
   </body>
 </html>
 

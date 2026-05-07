@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "HabitQuest",
+  "description": "Gamified habit tracker with RPG progression and offline support.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
