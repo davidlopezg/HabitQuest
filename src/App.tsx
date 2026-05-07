@@ -342,10 +342,17 @@ export default function App() {
     </div>
   );
 
-  const renderStats = () => (
+  const renderStats = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysPassed = now.getDate();
+
+    return (
     <div className="space-y-6">
       <h2 className="font-heading font-bold text-2xl mb-4">Estadísticas</h2>
-      
+
       <div className="grid grid-cols-2 gap-4">
         <div className="rpg-card p-4 flex flex-col items-center">
           <TrendingUp className="text-cyan-400 mb-2" />
@@ -363,15 +370,13 @@ export default function App() {
         <h3 className="font-bold mb-4">Cumplimiento Semanal</h3>
         <div className="space-y-4">
           {userData.habits.map(h => {
-             // Mock data for weekly progress
              const weekCount = h.completedDates.filter(d => {
                const date = new Date(d);
-               const now = new Date();
                const diff = (now.getTime() - date.getTime()) / (1000 * 3600 * 24);
                return diff < 7;
              }).length;
              const percent = Math.min(100, (weekCount / 7) * 100);
-             
+
              return (
                <div key={h.id}>
                  <div className="flex justify-between text-xs mb-1">
@@ -384,6 +389,39 @@ export default function App() {
                </div>
              )
           })}
+        </div>
+      </div>
+
+      <div className="rpg-card p-5">
+        <h3 className="font-bold mb-4">Cumplimiento Mensual</h3>
+        <div className="space-y-4">
+          {userData.habits.map(h => {
+            const monthCount = h.completedDates.filter(d => {
+              const date = new Date(d);
+              return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            }).length;
+            const percent = daysPassed > 0 ? Math.min(100, (monthCount / daysPassed) * 100) : 0;
+
+            return (
+              <div key={h.id}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>{h.icon} {h.name}</span>
+                  <span className="text-cyan-400 font-bold">{monthCount}/{daysPassed} días ({Math.round(percent)}%)</span>
+                </div>
+                <div className="h-2 bg-black/40 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${percent}%` }}
+                    className="h-full rpg-gradient"
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-4 pt-4 border-t border-white/10 flex justify-between text-sm">
+          <span className="text-rpg-text-secondary">Días transcurridos del mes:</span>
+          <span className="font-bold">{daysPassed} de {daysInMonth}</span>
         </div>
       </div>
     </div>
