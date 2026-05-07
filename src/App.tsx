@@ -59,9 +59,37 @@ interface UserData {
 const LEVEL_XP = 100;
 
 const INITIAL_HABITS: Habit[] = [
-  { id: '1', name: 'Leer 30 min', icon: '📚', xp: 30, streak: 0, completedDates: [] },
-  { id: '2', name: 'Meditar 10 min', icon: '🧘', xp: 20, streak: 0, completedDates: [] },
-  { id: '3', name: 'Beber 2L de agua', icon: '💧', xp: 25, streak: 0, completedDates: [] },
+  // 🌅 MAÑANA - Autocuidado
+  { id: '1', name: 'Respiración + afirmaciones', icon: '🌬️', xp: 10, streak: 0, completedDates: [] },
+  { id: '2', name: 'Caminar / ejercicio', icon: '🏃', xp: 25, streak: 0, completedDates: [] },
+  { id: '3', name: 'Ducha + suplementos', icon: '🚿', xp: 10, streak: 0, completedDates: [] },
+  { id: '4', name: 'Meditación', icon: '🧘', xp: 15, streak: 0, completedDates: [] },
+  { id: '5', name: 'Lectura rápida', icon: '📖', xp: 15, streak: 0, completedDates: [] },
+  { id: '6', name: 'Repaso tareas días', icon: '📋', xp: 10, streak: 0, completedDates: [] },
+  { id: '7', name: 'INBOX → Notion', icon: '📥', xp: 15, streak: 0, completedDates: [] },
+  { id: '8', name: 'Elegir 3 tareas activas', icon: '🎯', xp: 10, streak: 0, completedDates: [] },
+  { id: '9', name: 'Reflexión + planificar día', icon: '🤔', xp: 15, streak: 0, completedDates: [] },
+
+  // ☀️ MEDIODÍA - Primer Bloque Trabajo
+  { id: '10', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [] },
+  { id: '11', name: 'Buffer / preparación', icon: '⚙️', xp: 10, streak: 0, completedDates: [] },
+  { id: '12', name: '🔥 Bloque trabajo 1', icon: '🔥', xp: 30, streak: 0, completedDates: [] },
+  { id: '13', name: '🔥 Bloque trabajo 2', icon: '🔥', xp: 30, streak: 0, completedDates: [] },
+  { id: '14', name: 'Comida ligera', icon: '🥗', xp: 10, streak: 0, completedDates: [] },
+  { id: '15', name: 'Siesta (si necesaria)', icon: '😴', xp: 10, streak: 0, completedDates: [] },
+
+  // 🌇 TARDE - Segundo Bloque
+  { id: '16', name: '🌀 Bloque trabajo 3', icon: '🌀', xp: 30, streak: 0, completedDates: [] },
+  { id: '17', name: '🌀 Bloque trabajo 4', icon: '🌀', xp: 30, streak: 0, completedDates: [] },
+  { id: '18', name: 'Revisión móvil + email', icon: '📱', xp: 10, streak: 0, completedDates: [] },
+  { id: '19', name: '📝 Estatus diario', icon: '📊', xp: 15, streak: 0, completedDates: [] },
+  { id: '20', name: '🧠 Vaciar Cabeza → Notion', icon: '🧠', xp: 20, streak: 0, completedDates: [] },
+
+  // 🌙 NOCHE - Reflexión + Cierre
+  { id: '21', name: '🚫 Móvil OFF', icon: '📵', xp: 10, streak: 0, completedDates: [] },
+  { id: '22', name: '✨ 5 cosas buenas del día', icon: '✨', xp: 15, streak: 0, completedDates: [] },
+  { id: '23', name: '📖 Leer compendio', icon: '📚', xp: 15, streak: 0, completedDates: [] },
+  { id: '24', name: '🛌 Preparar dormir', icon: '🛌', xp: 10, streak: 0, completedDates: [] },
 ];
 
 const ACHIEVEMENTS: Achievement[] = [
@@ -94,6 +122,8 @@ export default function App() {
   const [showCelebration, setShowCelebration] = useState<{ xp: number, gems: number } | null>(null);
   const [isLevelUp, setIsLevelUp] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showAddHabit, setShowAddHabit] = useState(false);
+  const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25 });
 
   // --- Effects ---
   useEffect(() => {
@@ -527,7 +557,7 @@ export default function App() {
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           className="fixed bottom-28 right-5 w-14 h-14 rpg-gradient rounded-full shadow-lg flex items-center justify-center z-40 transform"
-          onClick={() => alert("Función para añadir hábitos personalizados coming soon...")}
+          onClick={() => setShowAddHabit(true)}
         >
           <Plus size={32} />
         </motion.button>
@@ -592,11 +622,95 @@ export default function App() {
               <h2 className="font-heading font-black text-4xl text-white">NIVEL ALCANZADO</h2>
               <div className="rpg-gradient px-8 py-2 rounded-full font-black text-2xl italic">LVL {level}</div>
               <p className="text-rpg-text-secondary max-w-[200px]">¡Has desbloqueado el título de <b>{getLevelTitle(level)}</b>!</p>
-              <button 
+              <button
                 onClick={() => setIsLevelUp(false)}
                 className="bg-white text-black px-12 py-4 rounded-2xl font-bold mt-4"
               >
                 ÉPICO
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showAddHabit && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-6"
+            onClick={() => setShowAddHabit(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="rpg-card p-6 w-full max-w-sm flex flex-col gap-5 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute top-0 inset-x-0 h-1 rpg-gradient" />
+
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading font-bold text-xl rpg-gradient-text">Nueva Misión</h3>
+                <button onClick={() => setShowAddHabit(false)} className="text-rpg-text-secondary hover:text-white">
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Nombre</label>
+                  <input
+                    type="text"
+                    value={newHabit.name}
+                    onChange={(e) => setNewHabit(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Ej: Hacer ejercicio 30 min"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50"
+                    maxLength={40}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Icono</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {['📚', '🧘', '💧', '🏃', '💪', '🥗', '😴', '📝', '🎯', '🧠', '🎨', '🎵', '✨', '⭐', '🔥'].map(icon => (
+                      <button
+                        key={icon}
+                        onClick={() => setNewHabit(prev => ({ ...prev, icon }))}
+                        className={`w-10 h-10 text-xl rounded-lg flex items-center justify-center transition-all ${newHabit.icon === icon ? 'bg-cyan-500/30 ring-2 ring-cyan-500' : 'bg-black/40 hover:bg-white/10'}`}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">XP por completar</label>
+                  <div className="flex gap-2">
+                    {[15, 25, 30, 40, 50].map(xp => (
+                      <button
+                        key={xp}
+                        onClick={() => setNewHabit(prev => ({ ...prev, xp }))}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newHabit.xp === xp ? 'bg-cyan-500/30 text-cyan-400 ring-2 ring-cyan-500' : 'bg-black/40 text-rpg-text-secondary hover:bg-white/10'}`}
+                      >
+                        {xp}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (newHabit.name.trim()) {
+                    addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp);
+                    setNewHabit({ name: '', icon: '✨', xp: 25 });
+                    setShowAddHabit(false);
+                  }
+                }}
+                disabled={!newHabit.name.trim()}
+                className="w-full rpg-gradient py-3 rounded-xl font-bold uppercase text-xs tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Crear Misión
               </button>
             </motion.div>
           </motion.div>
