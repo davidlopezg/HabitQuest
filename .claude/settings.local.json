@@ -4,7 +4,8 @@
       "Bash(git *)",
       "PowerShell(Get-ChildItem *)",
       "Bash(npm install *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('src/App.tsx', 'utf8'\\)\")"
     ]
   }
 }

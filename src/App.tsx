@@ -425,7 +425,8 @@ export default function App() {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderAchievements = () => (
     <div className="space-y-6">
