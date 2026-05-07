@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

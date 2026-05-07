@@ -20,7 +20,8 @@
       // Service Worker Inline for Offline Support
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW register error', err));
+          const swPath = '/HabitQuest/sw.js';
+          navigator.serviceWorker.register(swPath).catch(err => console.log('SW register error', err));
         });
       }
     </script>
