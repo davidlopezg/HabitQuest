@@ -711,6 +711,58 @@ export default function App() {
         </div>
       </div>
 
+      {/* Calendar - moved here, above weekly */}
+      <div className="rpg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold">📅 Calendario</h3>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-rpg-text-secondary">
+              {new Date(currentYear, currentMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
+            <div key={d} className="text-center text-[10px] text-rpg-text-secondary font-bold">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {/* Empty cells for days before month starts */}
+          {Array.from({ length: new Date(currentYear, currentMonth, 1).getDay() === 0 ? 6 : new Date(currentYear, currentMonth, 1).getDay() - 1 }).map((_, i) => (
+            <div key={`empty-${i}`} className="aspect-square" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const totalHabits = userData.habits.length;
+            const completedCount = userData.habits.filter(h => h.completedDates.includes(dateStr)).length;
+            const percentage = totalHabits > 0 ? (completedCount / totalHabits) * 100 : 0;
+            const isToday = dateStr === today;
+            
+            let bgColor = 'bg-black/30';
+            if (percentage > 0) bgColor = 'bg-cyan-500/30';
+            if (percentage >= 50) bgColor = 'bg-cyan-500/50';
+            if (percentage >= 75) bgColor = 'bg-cyan-500/70';
+            if (percentage === 100) bgColor = 'bg-green-500';
+            
+            return (
+              <div 
+                key={day}
+                className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all ${bgColor} ${isToday ? 'ring-2 ring-cyan-400' : ''}`}
+                title={`${day}: ${completedCount}/${totalHabits} hábitos (${Math.round(percentage)}%)`}
+              >
+                <span className={percentage === 100 ? 'text-white' : 'text-rpg-text-secondary'}>{day}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-center gap-4 mt-4 text-[10px]">
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-black/30" /> 0%</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-cyan-500/50" /> 50%</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-500" /> 100%</div>
+        </div>
+      </div>
+
       <div className="rpg-card p-5">
         <h3 className="font-bold mb-4">📅 Cumplimiento Semanal <span className="text-xs text-rpg-text-secondary">(esta semana)</span></h3>
         <div className="space-y-4">
@@ -771,58 +823,6 @@ export default function App() {
         <div className="mt-4 pt-4 border-t border-white/10 flex justify-between text-sm">
           <span className="text-rpg-text-secondary">Días en este mes:</span>
           <span className="font-bold">{daysInMonth} días</span>
-        </div>
-      </div>
-
-      {/* Calendar - inside stats page */}
-      <div className="rpg-card p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold">📅 Calendario</h3>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-rpg-text-secondary">
-              {new Date(currentYear, currentMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-            </span>
-          </div>
-        </div>
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
-            <div key={d} className="text-center text-[10px] text-rpg-text-secondary font-bold">{d}</div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {/* Empty cells for days before month starts */}
-          {Array.from({ length: new Date(currentYear, currentMonth, 1).getDay() === 0 ? 6 : new Date(currentYear, currentMonth, 1).getDay() - 1 }).map((_, i) => (
-            <div key={`empty-${i}`} className="aspect-square" />
-          ))}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const totalHabits = userData.habits.length;
-            const completedCount = userData.habits.filter(h => h.completedDates.includes(dateStr)).length;
-            const percentage = totalHabits > 0 ? (completedCount / totalHabits) * 100 : 0;
-            const isToday = dateStr === today;
-            
-            let bgColor = 'bg-black/30';
-            if (percentage > 0) bgColor = 'bg-cyan-500/30';
-            if (percentage >= 50) bgColor = 'bg-cyan-500/50';
-            if (percentage >= 75) bgColor = 'bg-cyan-500/70';
-            if (percentage === 100) bgColor = 'bg-green-500';
-            
-            return (
-              <div 
-                key={day}
-                className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all ${bgColor} ${isToday ? 'ring-2 ring-cyan-400' : ''}`}
-                title={`${day}: ${completedCount}/${totalHabits} hábitos (${Math.round(percentage)}%)`}
-              >
-                <span className={percentage === 100 ? 'text-white' : 'text-rpg-text-secondary'}>{day}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex justify-center gap-4 mt-4 text-[10px]">
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-black/30" /> 0%</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-cyan-500/50" /> 50%</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-500" /> 100%</div>
         </div>
       </div>
     </div>
