@@ -21,7 +21,9 @@ import {
   LogOut,
   ChevronRight,
   TrendingUp,
-  Clock
+  Clock,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -134,6 +136,7 @@ export default function App() {
   const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25 });
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitManager, setShowHabitManager] = useState(false);
+  const [sortMode, setSortMode] = useState<'custom' | 'name' | 'xp' | 'streak'>('custom');
 
   // --- Effects ---
   useEffect(() => {
@@ -258,6 +261,32 @@ export default function App() {
         habits: prev.habits.filter(h => h.id !== id)
       }));
     }
+  };
+
+  const moveHabit = (habitId: string, direction: 'up' | 'down') => {
+    setUserData(prev => {
+      const habits = [...prev.habits];
+      const habitIndex = habits.findIndex(h => h.id === habitId);
+      if (habitIndex === -1) return prev;
+
+      const habit = habits[habitIndex];
+      const sameGroupHabits = habits.filter(h => h.group === habit.group);
+      const groupIndices = sameGroupHabits.map(h => habits.findIndex(hab => hab.id === h.id));
+      
+      const posInGroup = groupIndices.indexOf(habitIndex);
+      const targetPos = direction === 'up' ? posInGroup - 1 : posInGroup + 1;
+      
+      if (targetPos < 0 || targetPos >= groupIndices.length) return prev;
+      
+      const targetIndex = groupIndices[targetPos];
+      
+      // Swap in array
+      const temp = habits[habitIndex];
+      habits[habitIndex] = habits[targetIndex];
+      habits[targetIndex] = temp;
+
+      return { ...prev, habits };
+    });
   };
 
   const exportData = () => {
@@ -419,7 +448,18 @@ export default function App() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const daysPassed = now.getDate();
+    const todayOfMonth = now.getDate();
+    
+    // Calcular inicio de la semana actual (lunes)
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 0=domingo, ajusta a lunes=0
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - mondayOffset);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    
+    // Días transcurridos en la semana (lunes a hoy)
+    const daysPassedThisWeek = todayOfMonth - mondayOffset;
+    const actualDaysInWeek = Math.max(1, Math.min(7, todayOfMonth - mondayOffset));
 
     return (
     <div className="space-y-6">
@@ -439,46 +479,50 @@ export default function App() {
       </div>
 
       <div className="rpg-card p-5">
-        <h3 className="font-bold mb-4">Cumplimiento Semanal</h3>
+        <h3 className="font-bold mb-4">📅 Cumplimiento Semanal <span className="text-xs text-rpg-text-secondary">(esta semana)</span></h3>
         <div className="space-y-4">
           {userData.habits.map(h => {
-             const weekCount = h.completedDates.filter(d => {
-               const date = new Date(d);
-               const diff = (now.getTime() - date.getTime()) / (1000 * 3600 * 24);
-               return diff < 7;
-             }).length;
-             const percent = Math.min(100, (weekCount / 7) * 100);
+            // Contar días completados desde lunes hasta hoy
+            const weekCount = h.completedDates.filter(d => {
+              const date = new Date(d);
+              return date >= weekStart && date <= now;
+            }).length;
+            const percent = Math.min(100, (weekCount / 7) * 100);
 
-             return (
-               <div key={h.id}>
-                 <div className="flex justify-between text-xs mb-1">
-                   <span>{h.icon} {h.name}</span>
-                   <span>{Math.round(percent)}%</span>
-                 </div>
-                 <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-cyan-500" style={{ width: `${percent}%` }} />
-                 </div>
-               </div>
-             )
+            return (
+              <div key={h.id}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>{h.icon} {h.name}</span>
+                  <span className="text-cyan-400 font-bold">{weekCount}/7 días</span>
+                </div>
+                <div className="h-2 bg-black/40 rounded-full overflow-hidden">
+                   <div className="h-full bg-cyan-500" style={{ width: `${percent}%` }} />
+                </div>
+              </div>
+            )
           })}
+        </div>
+        <div className="mt-4 pt-4 border-t border-white/10 flex justify-between text-sm">
+          <span className="text-rpg-text-secondary">Días de la semana:</span>
+          <span className="font-bold">7 días</span>
         </div>
       </div>
 
       <div className="rpg-card p-5">
-        <h3 className="font-bold mb-4">Cumplimiento Mensual</h3>
+        <h3 className="font-bold mb-4">📆 Cumplimiento Mensual <span className="text-xs text-rpg-text-secondary">(este mes)</span></h3>
         <div className="space-y-4">
           {userData.habits.map(h => {
             const monthCount = h.completedDates.filter(d => {
               const date = new Date(d);
               return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
             }).length;
-            const percent = daysPassed > 0 ? Math.min(100, (monthCount / daysPassed) * 100) : 0;
+            const percent = (monthCount / daysInMonth) * 100;
 
             return (
               <div key={h.id}>
                 <div className="flex justify-between text-xs mb-1">
                   <span>{h.icon} {h.name}</span>
-                  <span className="text-cyan-400 font-bold">{monthCount}/{daysPassed} días ({Math.round(percent)}%)</span>
+                  <span className="text-cyan-400 font-bold">{monthCount}/{daysInMonth} días ({Math.round(percent)}%)</span>
                 </div>
                 <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                   <motion.div
@@ -492,8 +536,8 @@ export default function App() {
           })}
         </div>
         <div className="mt-4 pt-4 border-t border-white/10 flex justify-between text-sm">
-          <span className="text-rpg-text-secondary">Días transcurridos del mes:</span>
-          <span className="font-bold">{daysPassed} de {daysInMonth}</span>
+          <span className="text-rpg-text-secondary">Días en este mes:</span>
+          <span className="font-bold">{daysInMonth} días</span>
         </div>
       </div>
     </div>
@@ -563,14 +607,42 @@ export default function App() {
 
       {/* Gestionar Misiones */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-4">
           <h3 className="font-heading font-bold text-lg">Gestionar Misiones</h3>
-          <button
-            onClick={() => setShowAddHabit(true)}
-            className="flex items-center gap-1 bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-cyan-500/30 transition-colors"
-          >
-            <Plus size={14} /> Nueva
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={sortMode}
+              onChange={(e) => {
+                const mode = e.target.value as typeof sortMode;
+                setSortMode(mode);
+                if (mode !== 'custom') {
+                  setUserData(prev => {
+                    const sorted = [...prev.habits];
+                    if (mode === 'name') {
+                      sorted.sort((a, b) => a.name.localeCompare(b.name));
+                    } else if (mode === 'xp') {
+                      sorted.sort((a, b) => b.xp - a.xp);
+                    } else if (mode === 'streak') {
+                      sorted.sort((a, b) => b.streak - a.streak);
+                    }
+                    return { ...prev, habits: sorted };
+                  });
+                }
+              }}
+              className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-rpg-text-secondary focus:outline-none"
+            >
+              <option value="custom">Orden Personalizado</option>
+              <option value="name">Por Nombre</option>
+              <option value="xp">Por XP</option>
+              <option value="streak">Por Racha</option>
+            </select>
+            <button
+              onClick={() => setShowAddHabit(true)}
+              className="flex items-center gap-1 bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-cyan-500/30 transition-colors"
+            >
+              <Plus size={14} /> Nueva
+            </button>
+          </div>
         </div>
         <div className="rpg-card p-1">
           {HABIT_GROUPS.map(group => {
@@ -597,6 +669,20 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => moveHabit(habit.id, 'up')}
+                          className="p-2 hover:bg-white/10 rounded-lg text-rpg-text-secondary hover:text-white transition-colors"
+                          title="Subir"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveHabit(habit.id, 'down')}
+                          className="p-2 hover:bg-white/10 rounded-lg text-rpg-text-secondary hover:text-white transition-colors"
+                          title="Bajar"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
                         <button
                           onClick={() => setEditingHabit(habit)}
                           className="p-2 hover:bg-white/10 rounded-lg text-rpg-text-secondary hover:text-white transition-colors"
