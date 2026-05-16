@@ -199,6 +199,7 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showFreezeUsed, setShowFreezeUsed] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('local');
@@ -232,6 +233,7 @@ export default function App() {
     const choseLocal = localStorage.getItem('habitquest_local_mode');
     if (choseLocal === 'true') {
       setFirebaseUser({ uid: 'local', displayName: 'Usuario Local', email: null, photoURL: null });
+      setIsLoading(false);
       return; // Don't connect to Firebase in local mode
     }
 
@@ -251,11 +253,13 @@ export default function App() {
           await loadFromFirestore(user.uid);
         } catch (e) {
           console.error('Error loading from Firestore:', e);
+          setIsLoading(false);
         }
       } else {
         // Not logged in - trigger welcome modal
         setFirebaseUser(null);
         setSyncStatus('local');
+        setIsLoading(false);
       }
     });
     
@@ -298,6 +302,7 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+    setIsLoading(false); // Mark loading as complete
   };
 
   const saveToFirestore = async (uid: string, data: UserData) => {
@@ -1273,6 +1278,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen max-w-lg mx-auto pb-24 px-5 pt-8 select-none">
+      {isLoading && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-rpg-bg">
+          <div className="text-center">
+            <div className="text-5xl mb-4 animate-pulse">🦸</div>
+            <p className="text-rpg-text-secondary">Cargando...</p>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {activeTab === 'home' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
