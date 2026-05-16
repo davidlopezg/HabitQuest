@@ -57,6 +57,19 @@ interface UserData {
   habits: Habit[];
   unlockedAchievements: string[];
   theme?: 'dark' | 'light';
+  streakFreeze: number;
+  groupStreaks: Record<string, number>;
+  lastGroupActivity: Record<string, string>;
+  dailyChallenges: DailyChallenge[];
+  lastBackupDate?: string;
+}
+
+interface DailyChallenge {
+  id: string;
+  groupId: string;
+  type: 'complete_all' | 'streak' | 'bonus_xp';
+  completed: boolean;
+  reward: number;
 }
 
 // --- Constants & Initial Data ---
@@ -145,7 +158,11 @@ export default function App() {
       globalStreak: 0,
       lastActiveDate: new Date().toISOString().split('T')[0],
       habits: INITIAL_HABITS,
-      unlockedAchievements: []
+      unlockedAchievements: [],
+      streakFreeze: 0,
+      groupStreaks: { morning: 0, midday: 0, afternoon: 0, night: 0 },
+      lastGroupActivity: {},
+      dailyChallenges: []
     };
   });
 
@@ -166,6 +183,9 @@ export default function App() {
   const [comboCount, setComboCount] = useState(0);
   const [comboTimer, setComboTimer] = useState<NodeJS.Timeout | null>(null);
   const [showCombo, setShowCombo] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showFreezeUsed, setShowFreezeUsed] = useState(false);
+  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
 
   // Apply theme to document
   useEffect(() => {
@@ -200,14 +220,47 @@ export default function App() {
       const yesterdayStr = yesterday.toISOString().split('T')[0];
       
       let newStreak = userData.globalStreak;
+      let newStreakFreeze = userData.streakFreeze;
+      
       if (userData.lastActiveDate !== yesterdayStr) {
-        newStreak = 0; // Lost streak
+        // Use streak freeze if available
+        if (newStreakFreeze > 0) {
+          newStreakFreeze--;
+          setShowFreezeUsed(true);
+          setTimeout(() => setShowFreezeUsed(false), 2000);
+        } else {
+          newStreak = 0; // Lost streak
+        }
       }
+
+      // Reset group streaks if no activity yesterday
+      const newGroupStreaks = { ...userData.groupStreaks };
+      Object.keys(newGroupStreaks).forEach(groupId => {
+        if (userData.lastGroupActivity[groupId] !== yesterdayStr) {
+          newGroupStreaks[groupId] = 0;
+        }
+      });
+
+      // Generate new daily challenges
+      const newChallenges: DailyChallenge[] = [];
+      HABIT_GROUPS.forEach(group => {
+        const groupHabits = userData.habits.filter(h => h.group === group.id);
+        newChallenges.push({
+          id: `complete_${group.id}`,
+          groupId: group.id,
+          type: 'complete_all',
+          completed: false,
+          reward: groupHabits.length * 5
+        });
+      });
 
       setUserData(prev => ({
         ...prev,
         lastActiveDate: today,
         globalStreak: newStreak,
+        streakFreeze: newStreakFreeze,
+        groupStreaks: newGroupStreaks,
+        dailyChallenges: newChallenges
       }));
     }
   };
@@ -242,10 +295,30 @@ export default function App() {
       newUserData.xp += newXp;
       newUserData.gems += newGems;
       
-      // Update global streak if first of the day
-      const anyCompletedToday = newUserData.habits.some(h => h.id !== id && h.completedDates.includes(today));
-      if (!anyCompletedToday) {
-        newUserData.globalStreak += 1;
+      // Update group streaks
+      const newGroupStreaks = { ...newUserData.groupStreaks };
+      const lastActivity = newUserData.lastGroupActivity[habit.group] || '';
+      if (lastActivity === yesterdayStr) {
+        newGroupStreaks[habit.group] = (newGroupStreaks[habit.group] || 0) + 1;
+      } else if (lastActivity !== today) {
+        newGroupStreaks[habit.group] = 1;
+      }
+      newUserData.groupStreaks = newGroupStreaks;
+      newUserData.lastGroupActivity = { ...newUserData.lastGroupActivity, [habit.group]: today };
+
+      // Check daily challenges
+      const newChallenges = [...(newUserData.dailyChallenges || [])];
+      const challenge = newChallenges.find(c => c.groupId === habit.group && c.type === 'complete_all' && !c.completed);
+      if (challenge) {
+        const groupHabits = newUserData.habits.filter(h => h.group === habit.group);
+        const allCompleted = groupHabits.every(h => h.completedDates.includes(today));
+        if (allCompleted) {
+          challenge.completed = true;
+          newXp += challenge.reward;
+          newUserData.gems += 3;
+          setDailyChallenge({ ...challenge, completed: true });
+          setTimeout(() => setDailyChallenge(null), 3000);
+        }
       }
 
       // Combo system - complete habits quickly for bonus
@@ -282,21 +355,23 @@ export default function App() {
         }
       });
 
-      setUserData(newUserData);
-      
-      // Skip animation if quick complete is enabled
-      if (!quickComplete) {
-        setShowCelebration({ xp: newXp, gems: newGems });
-      } else {
-        // Just flash the XP briefly
-        setShowCelebration({ xp: newXp, gems: newGems });
-        setTimeout(() => setShowCelebration(null), 800);
-      }
-      
-      if (Math.floor((userData.xp + newXp) / LEVEL_XP) > Math.floor(userData.xp / LEVEL_XP)) {
-        setIsLevelUp(true);
+      // Update global streak if first of the day
+      const anyCompletedToday = newUserData.habits.some(h => h.id !== id && h.completedDates.includes(today));
+      if (!anyCompletedToday) {
+        newUserData.globalStreak += 1;
       }
 
+      setUserData(newUserData);
+      
+      // Trigger confetti on level up
+      if (Math.floor((userData.xp + newXp) / LEVEL_XP) > Math.floor(userData.xp / LEVEL_XP)) {
+        setIsLevelUp(true);
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3000);
+      }
+      
+      // Show celebration
+      setShowCelebration({ xp: newXp, gems: newGems });
       setTimeout(() => setShowCelebration(null), 3000);
     }
   };
@@ -390,10 +465,38 @@ export default function App() {
         globalStreak: 0,
         lastActiveDate: today,
         habits: INITIAL_HABITS,
-        unlockedAchievements: []
+        unlockedAchievements: [],
+        streakFreeze: 0,
+        groupStreaks: { morning: 0, midday: 0, afternoon: 0, night: 0 },
+        lastGroupActivity: {},
+        dailyChallenges: []
       });
     }
   };
+
+  const buyStreakFreeze = () => {
+    if (userData.gems >= 50) {
+      setUserData(prev => ({
+        ...prev,
+        gems: prev.gems - 50,
+        streakFreeze: prev.streakFreeze + 1
+      }));
+    } else {
+      alert('Necesitas 50 gemas para comprar un Freeze de Racha');
+    }
+  };
+
+  // Auto-backup every 7 days
+  useEffect(() => {
+    const lastBackup = userData.lastBackupDate;
+    if (lastBackup) {
+      const daysSinceBackup = Math.floor((Date.now() - new Date(lastBackup).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSinceBackup >= 7) {
+        exportData();
+        setUserData(prev => ({ ...prev, lastBackupDate: today }));
+      }
+    }
+  }, []);
 
   // --- Render Helpers ---
   const renderHome = () => (
@@ -419,6 +522,12 @@ export default function App() {
               <Flame size={14} className="text-orange-500" />
               <span className="text-xs font-bold text-orange-500">{userData.globalStreak} días</span>
             </div>
+            {userData.streakFreeze > 0 && (
+              <div className="flex items-center gap-1 bg-blue-500/20 px-2 py-1 rounded-full border border-blue-500/30">
+                <span className="text-xs">❄️</span>
+                <span className="text-xs font-bold text-blue-400">{userData.streakFreeze}</span>
+              </div>
+            )}
           </div>
         </div>
         
@@ -434,6 +543,32 @@ export default function App() {
           <span className="text-[10px] text-rpg-text-secondary font-medium">{currentLevelXp} / {LEVEL_XP} XP</span>
         </div>
       </section>
+
+      {/* Daily Challenges */}
+      {userData.dailyChallenges && userData.dailyChallenges.length > 0 && (
+        <section className="rpg-card p-4">
+          <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+            <span>🎯</span> Desafíos Diarios
+          </h3>
+          <div className="space-y-2">
+            {userData.dailyChallenges.map(challenge => {
+              const group = HABIT_GROUPS.find(g => g.id === challenge.groupId);
+              return (
+                <div 
+                  key={challenge.id}
+                  className={`flex items-center justify-between p-2 rounded-lg ${challenge.completed ? 'bg-green-500/20' : 'bg-white/5'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{challenge.completed ? '✅' : '⬜'}</span>
+                    <span className="text-xs">{group?.icon} Completa {group?.name}</span>
+                  </div>
+                  <span className="text-xs text-cyan-400 font-bold">+{challenge.reward} XP + 3 💎</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Habits List */}
       <section>
@@ -475,6 +610,9 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{group.icon}</span>
                     <h4 className={`font-bold text-sm uppercase tracking-wider ${group.color}`}>{group.name}</h4>
+                    {(userData.groupStreaks?.[group.id] || 0) > 0 && (
+                      <span className="text-xs text-orange-500">🔥{userData.groupStreaks[group.id]}</span>
+                    )}
                   </div>
                   <span className="text-xs text-rpg-text-secondary">{completed}/{total}</span>
                 </div>
@@ -753,6 +891,29 @@ export default function App() {
             <ChevronRight size={18} />
           </button>
         </div>
+      </div>
+
+      {/* Streak Freeze Shop */}
+      <div className="rpg-card p-4">
+        <h4 className="font-bold text-sm mb-3 flex items-center gap-2">
+          <span>❄️</span> Protege tu Racha
+        </h4>
+        <p className="text-xs text-rpg-text-secondary mb-3">Si pierdes tu racha, el Freeze la protegerá 1 día.</p>
+        <button
+          onClick={buyStreakFreeze}
+          className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+            userData.gems >= 50 
+              ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' 
+              : 'bg-black/40 text-rpg-text-secondary cursor-not-allowed'
+          }`}
+        >
+          <span>❄️</span>
+          <span>Comprar Freeze</span>
+          <span className="ml-2 bg-black/30 px-2 py-0.5 rounded">💎 50</span>
+        </button>
+        <p className="text-center text-xs text-rpg-text-secondary mt-2">
+         Tienes <span className="text-blue-400 font-bold">{userData.streakFreeze}</span> freezes
+        </p>
       </div>
 
       {/* Gestionar Misiones */}
@@ -1164,6 +1325,68 @@ export default function App() {
           >
             <span className="text-2xl animate-bounce">🔥</span>
             <span>COMBO x{comboCount}!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Confetti */}
+      <AnimatePresence>
+        {showConfetti && (
+          <div className="fixed inset-0 z-[300] pointer-events-none">
+            {Array.from({ length: 50 }).map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{ 
+                  x: Math.random() * window.innerWidth, 
+                  y: -20,
+                  rotate: 0,
+                  scale: Math.random() * 0.5 + 0.5
+                }}
+                animate={{ 
+                  y: window.innerHeight + 20,
+                  rotate: Math.random() * 720 - 360,
+                  opacity: [1, 1, 0]
+                }}
+                transition={{ 
+                  duration: Math.random() * 2 + 2,
+                  delay: Math.random() * 0.5
+                }}
+                className="absolute w-3 h-3 rounded-full"
+                style={{
+                  background: ['#FF6B6B', '#FFB347', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][i % 6]
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Freeze used notification */}
+      <AnimatePresence>
+        {showFreezeUsed && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[150] bg-blue-500 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 shadow-lg"
+          >
+            <span>❄️</span>
+            <span>Streak Freeze activado!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Daily challenge completed */}
+      <AnimatePresence>
+        {dailyChallenge && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="fixed bottom-28 right-5 z-[150] bg-green-500 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg text-sm"
+          >
+            <span>🎯</span>
+            <span>+{dailyChallenge.reward} XP! +3 💎</span>
           </motion.div>
         )}
       </AnimatePresence>
