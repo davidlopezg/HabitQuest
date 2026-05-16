@@ -133,7 +133,7 @@ export default function App() {
   const [isLevelUp, setIsLevelUp] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showAddHabit, setShowAddHabit] = useState(false);
-  const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25 });
+  const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25, group: 'morning' });
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitManager, setShowHabitManager] = useState(false);
   const [sortMode, setSortMode] = useState<'custom' | 'name' | 'xp' | 'streak'>('custom');
@@ -234,17 +234,17 @@ export default function App() {
     }
   };
 
-  const addHabit = (name: string, icon: string, xp: number) => {
-    const newHabit: Habit = {
+  const addHabit = (name: string, icon: string, xp: number, group: string = 'morning') => {
+    const newHabitData: Habit = {
       id: Date.now().toString(),
       name,
       icon,
       xp,
       streak: 0,
       completedDates: [],
-      group: 'morning'
+      group
     };
-    setUserData(prev => ({ ...prev, habits: [...prev.habits, newHabit] }));
+    setUserData(prev => ({ ...prev, habits: [...prev.habits, newHabitData] }));
   };
 
   const editHabit = (id: string, updates: Partial<Habit>) => {
@@ -904,13 +904,13 @@ export default function App() {
                   <label className="text-xs text-rpg-text-secondary uppercase tracking-wider mb-2 block">Grupo</label>
                   <div className="grid grid-cols-2 gap-2">
                     {HABIT_GROUPS.map(group => {
-                      const currentGroup = editingHabit ? editingHabit.group : 'morning';
+                      const currentGroup = editingHabit ? editingHabit.group : newHabit.group;
                       return (
                         <button
                           key={group.id}
                           onClick={() => editingHabit
                             ? setEditingHabit(prev => prev ? { ...prev, group: group.id } : null)
-                            : null}
+                            : setNewHabit(prev => ({ ...prev, group: group.id }))}
                           className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${currentGroup === group.id ? `${group.color} bg-white/10 ring-2 ring-white/30` : 'bg-black/40 text-rpg-text-secondary hover:bg-white/10'}`}
                         >
                           <span>{group.icon}</span>
@@ -932,8 +932,8 @@ export default function App() {
                     }
                   } else {
                     if (newHabit.name.trim()) {
-                      addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp);
-                      setNewHabit({ name: '', icon: '✨', xp: 25 });
+                      addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp, newHabit.group || 'morning');
+                      setNewHabit({ name: '', icon: '✨', xp: 25, group: 'morning' });
                       setShowAddHabit(false);
                     }
                   }
