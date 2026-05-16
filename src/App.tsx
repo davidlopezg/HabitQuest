@@ -762,13 +762,19 @@ export default function App() {
                     return (
                       <motion.div
                         key={habit.id}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => !isCompleted && toggleHabit(habit.id)}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          if (!isCompleted) {
+                            toggleHabit(habit.id);
+                          }
+                        }}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          setContextMenuHabit(habit);
+                          if (!isCompleted) {
+                            setContextMenuHabit(habit);
+                          }
                         }}
-                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
+                        className={`rpg-card p-3 flex items-center gap-3 transition-all cursor-pointer ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
                       >
                         <div className="text-xl">{habit.icon}</div>
                         <div className="flex-1">
