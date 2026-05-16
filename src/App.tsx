@@ -110,6 +110,26 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: 'perfect_day', name: 'Día Perfecto', description: 'Completa todos tus hábitos hoy', icon: '🌟', condition: () => false }, // Handled in logic
   { id: 'gem_collector', name: 'Gema a Gema', description: 'Acumula 100 gemas', icon: '💎', condition: (d) => d.gems >= 100 },
   { id: 'lvl_10', name: 'Nivel 10', description: 'Alcanza el nivel 10', icon: '🏰', condition: (d) => Math.floor(d.xp / LEVEL_XP) + 1 >= 10 },
+  // Nuevos logros
+  { id: 'early_bird', name: 'Madrugador', description: 'Completa 3 hábitos del grupo MAÑANA', icon: '🌅', condition: (d) => {
+    const morningHabits = d.habits.filter(h => h.group === 'morning');
+    const todayCompleted = morningHabits.filter(h => h.completedDates.includes(today));
+    return todayCompleted.length >= 3;
+  }},
+  { id: 'night_owl', name: 'Noctámbulo', description: 'Completa 3 hábitos del grupo NOCHE', icon: '🦉', condition: (d) => {
+    const nightHabits = d.habits.filter(h => h.group === 'night');
+    const todayCompleted = nightHabits.filter(h => h.completedDates.includes(today));
+    return todayCompleted.length >= 3;
+  }},
+  { id: 'speed_demon', name: 'Velocista', description: 'Completa 5 hábitos en menos de 1 hora', icon: '⚡', condition: (d) => d.unlockedAchievements.includes('speed_demon_today') },
+  { id: 'century', name: 'Centuria', description: 'Completa 100 hábitos en total', icon: '💯', condition: (d) => d.habits.reduce((acc, h) => acc + h.completedDates.length, 0) >= 100 },
+  { id: 'dedication', name: 'Dedicación', description: 'Usa la app 7 días seguidos', icon: '📅', condition: (d) => d.globalStreak >= 7 },
+  { id: 'perfectionist', name: 'Perfeccionista', description: '10 días perfectos', icon: '💎', condition: (d) => {
+    const perfectDays = d.habits[0]?.completedDates.filter((_, i) => {
+      return d.habits.every(h => h.completedDates.includes(h.completedDates[i]));
+    }).length || 0;
+    return perfectDays >= 10;
+  }},
 ];
 
 export default function App() {
@@ -143,6 +163,9 @@ export default function App() {
   const [longPressHabit, setLongPressHabit] = useState<string | null>(null);
   const [contextMenuHabit, setContextMenuHabit] = useState<Habit | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [comboCount, setComboCount] = useState(0);
+  const [comboTimer, setComboTimer] = useState<NodeJS.Timeout | null>(null);
+  const [showCombo, setShowCombo] = useState(false);
 
   // Apply theme to document
   useEffect(() => {
@@ -208,7 +231,7 @@ export default function App() {
     
     if (!isCompletedToday) {
       // Complete habit
-      const newXp = habit.xp;
+      let newXp = habit.xp;
       const newGems = 5;
       
       const newUserData = { ...userData };
@@ -223,6 +246,26 @@ export default function App() {
       const anyCompletedToday = newUserData.habits.some(h => h.id !== id && h.completedDates.includes(today));
       if (!anyCompletedToday) {
         newUserData.globalStreak += 1;
+      }
+
+      // Combo system - complete habits quickly for bonus
+      const now = Date.now();
+      if (comboTimer && comboCount > 0) {
+        clearTimeout(comboTimer);
+      }
+      const newComboCount = comboCount + 1;
+      setComboCount(newComboCount);
+      const comboTimeout = setTimeout(() => setComboCount(0), 30000); // 30 seconds window
+      setComboTimer(comboTimeout);
+      
+      // Bonus XP for combos (3+ habits in 30 seconds)
+      let comboBonus = 0;
+      if (newComboCount >= 3) {
+        comboBonus = Math.floor(habit.xp * 0.5); // 50% bonus
+        newXp += comboBonus;
+        newUserData.xp += comboBonus;
+        setShowCombo(true);
+        setTimeout(() => setShowCombo(false), 1500);
       }
 
       // Check for perfect day achievement
@@ -587,6 +630,51 @@ export default function App() {
           <span className="font-bold">{daysInMonth} días</span>
         </div>
       </div>
+
+      {/* Calendar */}
+      <div className="rpg-card p-5">
+        <h3 className="font-bold mb-4">📅 Calendario <span className="text-xs text-rpg-text-secondary">(este mes)</span></h3>
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
+            <div key={d} className="text-center text-[10px] text-rpg-text-secondary font-bold">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {/* Empty cells for days before month starts */}
+          {Array.from({ length: new Date(currentYear, currentMonth, 1).getDay() === 0 ? 6 : new Date(currentYear, currentMonth, 1).getDay() - 1 }).map((_, i) => (
+            <div key={`empty-${i}`} className="aspect-square" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const totalHabits = userData.habits.length;
+            const completedCount = userData.habits.filter(h => h.completedDates.includes(dateStr)).length;
+            const percentage = totalHabits > 0 ? (completedCount / totalHabits) * 100 : 0;
+            const isToday = dateStr === today;
+            
+            let bgColor = 'bg-black/30';
+            if (percentage > 0) bgColor = 'bg-cyan-500/30';
+            if (percentage >= 50) bgColor = 'bg-cyan-500/50';
+            if (percentage >= 75) bgColor = 'bg-cyan-500/70';
+            if (percentage === 100) bgColor = 'bg-green-500';
+            
+            return (
+              <div 
+                key={day}
+                className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all ${bgColor} ${isToday ? 'ring-2 ring-cyan-400' : ''}`}
+                title={`${day}: ${completedCount}/${totalHabits} hábitos (${Math.round(percentage)}%)`}
+              >
+                <span className={percentage === 100 ? 'text-white' : 'text-rpg-text-secondary'}>{day}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-center gap-4 mt-4 text-[10px]">
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-black/30" /> 0%</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-cyan-500/50" /> 50%</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-500" /> 100%</div>
+        </div>
+      </div>
     </div>
     );
   };
@@ -842,6 +930,11 @@ export default function App() {
                 <div className="flex items-center gap-1 bg-white/5 px-3 py-1 rounded-full">
                   <span className="text-xs font-bold text-cyan-400">+{showCelebration.xp} XP</span>
                 </div>
+                {showCelebration.xp > habit.xp && (
+                  <div className="flex items-center gap-1 bg-orange-500/20 px-3 py-1 rounded-full">
+                    <span className="text-xs font-bold text-orange-400 animate-pulse">🔥 COMBO +{showCelebration.xp - habit.xp}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 bg-white/5 px-3 py-1 rounded-full">
                   <span className="text-xs font-bold text-orange-400">+{showCelebration.gems} 💎</span>
                 </div>
@@ -1056,6 +1149,21 @@ export default function App() {
                 Cancelar
               </button>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Combo indicator */}
+      <AnimatePresence>
+        {showCombo && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[150] bg-orange-500 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 shadow-lg"
+          >
+            <span className="text-2xl animate-bounce">🔥</span>
+            <span>COMBO x{comboCount}!</span>
           </motion.div>
         )}
       </AnimatePresence>
