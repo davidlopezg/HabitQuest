@@ -422,6 +422,11 @@ export default function App() {
       newUserData.xp += newXp;
       newUserData.gems += newGems;
       
+      // Calculate yesterday
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      
       // Update group streaks
       const newGroupStreaks = { ...newUserData.groupStreaks };
       const lastActivity = newUserData.lastGroupActivity[habit.group] || '';
