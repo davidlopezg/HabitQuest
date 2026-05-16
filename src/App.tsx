@@ -23,9 +23,14 @@ import {
   TrendingUp,
   Clock,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { auth, googleProvider, db } from './firebase';
 
 // --- Types ---
 interface Habit {
@@ -62,6 +67,14 @@ interface UserData {
   lastGroupActivity: Record<string, string>;
   dailyChallenges: DailyChallenge[];
   lastBackupDate?: string;
+  lastSyncedAt?: string;
+}
+
+interface FirebaseUser {
+  uid: string;
+  displayName: string | null;
+  email: string | null;
+  photoURL: string | null;
 }
 
 interface DailyChallenge {
@@ -186,6 +199,9 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showFreezeUsed, setShowFreezeUsed] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('local');
 
   // Apply theme to document
   useEffect(() => {
@@ -209,6 +225,111 @@ export default function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [longPressHabit, userData.habits]);
+
+  // --- Firebase Auth & Sync ---
+  useEffect(() => {
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setFirebaseUser({
+          uid: user.uid,
+          displayName: user.displayName,
+          email: user.email,
+          photoURL: user.photoURL
+        });
+        
+        // Load data from Firestore
+        await loadFromFirestore(user.uid);
+      } else {
+        setFirebaseUser(null);
+        setSyncStatus('local');
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
+  const loadFromFirestore = async (uid: string) => {
+    try {
+      setIsSyncing(true);
+      const docRef = doc(db, 'users', uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const cloudData = docSnap.data() as UserData;
+        setUserData(prev => ({
+          ...cloudData,
+          // Merge with local habits if they exist in local but not in cloud
+          habits: cloudData.habits.length > 0 ? cloudData.habits : prev.habits
+        }));
+        setSyncStatus('synced');
+      } else {
+        // First time user - upload local data to cloud
+        await saveToFirestore(uid, userData);
+        setSyncStatus('synced');
+      }
+    } catch (error) {
+      console.error('Error loading from Firestore:', error);
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const saveToFirestore = async (uid: string, data: UserData) => {
+    try {
+      setIsSyncing(true);
+      const docRef = doc(db, 'users', uid);
+      await setDoc(docRef, {
+        ...data,
+        lastSyncedAt: new Date().toISOString()
+      });
+      setSyncStatus('synced');
+    } catch (error) {
+      console.error('Error saving to Firestore:', error);
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      alert('Error al iniciar sesión con Google');
+    }
+  };
+
+  const signOutGoogle = async () => {
+    try {
+      await signOut(auth);
+      setSyncStatus('local');
+    } catch (error) {
+      console.error('Sign-out error:', error);
+    }
+  };
+
+  const forceSync = async () => {
+    if (firebaseUser) {
+      await saveToFirestore(firebaseUser.uid, userData);
+    }
+  };
+
+  // Auto-sync to localStorage and cloud
+  useEffect(() => {
+    localStorage.setItem('habitquest_data', JSON.stringify(userData));
+    checkDailyReset();
+    
+    // Auto-sync to cloud if logged in
+    if (firebaseUser) {
+      const timeoutId = setTimeout(() => {
+        saveToFirestore(firebaseUser.uid, userData);
+      }, 1000); // Debounce 1 second
+      return () => clearTimeout(timeoutId);
+    }
+  }, [userData, firebaseUser]);
 
   // --- Logic ---
   const today = new Date().toISOString().split('T')[0];
@@ -516,6 +637,14 @@ export default function App() {
               <p className="text-xs text-rpg-text-secondary uppercase tracking-wider">
                 Lvl {level} - {getLevelTitle(level)}
               </p>
+              {/* Sync status indicator */}
+              {firebaseUser && (
+                <div className={`flex items-center gap-1 text-[8px] ${syncStatus === 'synced' ? 'text-green-400' : syncStatus === 'error' ? 'text-red-400' : 'text-yellow-400'}`}>
+                  {syncStatus === 'synced' && <><Cloud size={10} /> Sincronizado</>}
+                  {syncStatus === 'error' && <><CloudOff size={10} /> Error</>}
+                  {syncStatus === 'local' && isSyncing && <><Cloud size={10} className="animate-pulse" /> Sincronizando...</>}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -850,6 +979,66 @@ export default function App() {
 
   const renderHero = () => (
     <div className="space-y-6">
+      {/* Google Sign-In Section */}
+      <div className="rpg-card p-5">
+        <h3 className="font-bold mb-4 flex items-center gap-2">
+          <Cloud size={18} className="text-cyan-400" />
+          Sincronización en la Nube
+        </h3>
+        {firebaseUser ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl">
+              <img 
+                src={firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName || 'U'}&background=random`} 
+                alt="Avatar" 
+                className="w-12 h-12 rounded-full"
+              />
+              <div className="flex-1">
+                <p className="font-bold text-sm">{firebaseUser.displayName || 'Usuario'}</p>
+                <p className="text-xs text-rpg-text-secondary">{firebaseUser.email}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={forceSync}
+                className="flex-1 bg-cyan-500/20 text-cyan-400 py-3 rounded-xl font-bold text-sm hover:bg-cyan-500/30 transition-colors flex items-center justify-center gap-2"
+              >
+                <Cloud size={16} />
+                Sincronizar Ahora
+              </button>
+              <button
+                onClick={signOutGoogle}
+                className="flex-1 bg-red-500/20 text-red-400 py-3 rounded-xl font-bold text-sm hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2"
+              >
+                <LogOut size={16} />
+                Cerrar Sesión
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-rpg-text-secondary">
+              Inicia sesión con Google para sincronizar tus datos en la nube y acceder desde cualquier dispositivo.
+            </p>
+            <button
+              onClick={signInWithGoogle}
+              className="w-full bg-white text-slate-800 py-3 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Iniciar Sesión con Google
+            </button>
+            <p className="text-[10px] text-rpg-text-secondary text-center">
+              Tus datos se guardan de forma segura en Firebase
+            </p>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-col items-center p-6 rpg-card">
         <div className="text-7xl mb-4 relative">
           {userData.avatar}
