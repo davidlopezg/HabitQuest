@@ -392,8 +392,8 @@ export default function App() {
     }
   };
 
-  const level = Math.floor(userData.xp / LEVEL_XP) + 1;
-  const currentLevelXp = userData.xp % LEVEL_XP;
+  const level = useMemo(() => Math.floor(userData.xp / LEVEL_XP) + 1, [userData.xp]);
+  const currentLevelXp = useMemo(() => userData.xp % LEVEL_XP, [userData.xp]);
   
   const getLevelTitle = (lvl: number) => {
     if (lvl <= 5) return 'Iniciado';
@@ -678,7 +678,8 @@ export default function App() {
         
         <div className="relative w-full h-3 bg-black/40 rounded-full overflow-hidden">
           <motion.div 
-            initial={{ width: 0 }}
+            key={userData.xp}
+            initial={{ width: `${((currentLevelXp - 10) / LEVEL_XP) * 100}%` }}
             animate={{ width: `${(currentLevelXp / LEVEL_XP) * 100}%` }}
             className="h-full rpg-gradient shadow-[0_0_10px_rgba(255,107,107,0.4)]"
           />
