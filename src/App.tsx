@@ -341,8 +341,9 @@ export default function App() {
   // Auto-sync to localStorage and cloud
   useEffect(() => {
     // Always save to localStorage
-    localStorage.setItem('habitquest_data', JSON.stringify(userData));
-    console.log('Saved to localStorage. XP:', userData.xp, 'Gems:', userData.gems);
+    const dataString = JSON.stringify(userData);
+    localStorage.setItem('habitquest_data', dataString);
+    console.log('📦 Saving to localStorage:', userData.xp, 'XP', userData.gems, 'Gems', userData.habits.length, 'habits');
     
     // Check daily reset
     checkDailyReset();
@@ -350,6 +351,7 @@ export default function App() {
     // Auto-sync to cloud if logged in and not local mode
     if (firebaseUser && firebaseUser.uid !== 'local') {
       const timeoutId = setTimeout(() => {
+        console.log('☁️ Syncing to Firebase...');
         saveToFirestore(firebaseUser.uid, userData);
       }, 1000); // Debounce 1 second
       return () => clearTimeout(timeoutId);
@@ -513,6 +515,8 @@ export default function App() {
       }
 
       setUserData(newUserData);
+      
+      console.log('Toggle habit completed. New XP:', newUserData.xp, 'Gems:', newUserData.gems);
       
       // Trigger confetti on level up
       if (Math.floor((userData.xp + newXp) / LEVEL_XP) > Math.floor(userData.xp / LEVEL_XP)) {
