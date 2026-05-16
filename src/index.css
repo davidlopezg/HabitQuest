@@ -6,15 +6,26 @@
   --font-heading: "Epilogue", sans-serif;
   
   --color-rpg-bg: #1A1B2F;
+  --color-rpg-bg-light: #F0F0F5;
   --color-rpg-card: #252745;
+  --color-rpg-card-light: #FFFFFF;
   --color-rpg-accent-start: #FFB347;
   --color-rpg-accent-end: #FF6B6B;
   --color-rpg-text-secondary: #B0B3CC;
+  --color-rpg-text-secondary-light: #6B7280;
 }
 
 @layer base {
   body {
-    @apply bg-rpg-bg text-white font-sans overflow-x-hidden;
+    @apply bg-rpg-bg text-white font-sans overflow-x-hidden transition-colors duration-300;
+  }
+  
+  :root[data-theme="light"] body {
+    @apply bg-rpg-bg-light text-slate-800;
+  }
+  
+  :root[data-theme="light"] .rpg-card {
+    @apply bg-rpg-card-light shadow-md;
   }
 }
 
@@ -23,7 +34,15 @@
 }
 
 .rpg-card {
-  @apply bg-rpg-card rounded-2xl shadow-lg border border-white/5;
+  @apply bg-rpg-card rounded-2xl shadow-lg border border-white/5 transition-colors duration-300;
+}
+
+:global([data-theme="light"]) .rpg-card {
+  @apply border-slate-200;
+}
+
+:global([data-theme="light"]) .rpg-text-secondary {
+  color: var(--color-rpg-text-secondary-light);
 }
 
 .scrollbar-hide::-webkit-scrollbar {

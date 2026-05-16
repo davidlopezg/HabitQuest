@@ -56,6 +56,7 @@ interface UserData {
   lastActiveDate: string;
   habits: Habit[];
   unlockedAchievements: string[];
+  theme?: 'dark' | 'light';
 }
 
 // --- Constants & Initial Data ---
@@ -137,12 +138,16 @@ export default function App() {
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitManager, setShowHabitManager] = useState(false);
   const [sortMode, setSortMode] = useState<'custom' | 'name' | 'xp' | 'streak'>('custom');
+  const [focusMode, setFocusMode] = useState(false);
+  const [quickComplete, setQuickComplete] = useState(false);
+  const [longPressHabit, setLongPressHabit] = useState<string | null>(null);
+  const [contextMenuHabit, setContextMenuHabit] = useState<Habit | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
-  // --- Effects ---
+  // Apply theme to document
   useEffect(() => {
-    localStorage.setItem('habitquest_data', JSON.stringify(userData));
-    checkDailyReset();
-  }, [userData]);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -150,6 +155,17 @@ export default function App() {
       setInstallPrompt(e);
     });
   }, []);
+
+  // --- Long Press Effect ---
+  useEffect(() => {
+    if (!longPressHabit) return;
+    const timer = setTimeout(() => {
+      const habit = userData.habits.find(h => h.id === longPressHabit);
+      if (habit) setContextMenuHabit(habit);
+      setLongPressHabit(null);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [longPressHabit, userData.habits]);
 
   // --- Logic ---
   const today = new Date().toISOString().split('T')[0];
@@ -224,7 +240,15 @@ export default function App() {
       });
 
       setUserData(newUserData);
-      setShowCelebration({ xp: newXp, gems: newGems });
+      
+      // Skip animation if quick complete is enabled
+      if (!quickComplete) {
+        setShowCelebration({ xp: newXp, gems: newGems });
+      } else {
+        // Just flash the XP briefly
+        setShowCelebration({ xp: newXp, gems: newGems });
+        setTimeout(() => setShowCelebration(null), 800);
+      }
       
       if (Math.floor((userData.xp + newXp) / LEVEL_XP) > Math.floor(userData.xp / LEVEL_XP)) {
         setIsLevelUp(true);
@@ -372,15 +396,35 @@ export default function App() {
       <section>
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-heading font-bold text-lg">Misiones de Hoy</h3>
-          <span className="text-xs text-rpg-text-secondary">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFocusMode(!focusMode)}
+              className={`p-2 rounded-lg transition-all ${focusMode ? 'bg-cyan-500/30 text-cyan-400' : 'bg-white/5 text-rpg-text-secondary hover:text-white'}`}
+              title="Modo Focus"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button
+              onClick={() => setQuickComplete(!quickComplete)}
+              className={`p-2 rounded-lg transition-all ${quickComplete ? 'bg-cyan-500/30 text-cyan-400' : 'bg-white/5 text-rpg-text-secondary hover:text-white'}`}
+              title="Completar rápido"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </button>
+            <span className="text-xs text-rpg-text-secondary">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
+          </div>
         </div>
 
         <div className="space-y-6">
           {HABIT_GROUPS.map(group => {
-            const groupHabits = userData.habits.filter(h => h.group === group.id);
+            let groupHabits = userData.habits.filter(h => h.group === group.id);
+            if (focusMode) {
+              groupHabits = groupHabits.filter(h => !h.completedDates.includes(today));
+              if (groupHabits.length === 0) return null;
+            }
             if (groupHabits.length === 0) return null;
-            const completed = groupHabits.filter(h => h.completedDates.includes(today)).length;
-            const total = groupHabits.length;
+            const completed = userData.habits.filter(h => h.group === group.id && h.completedDates.includes(today)).length;
+            const total = userData.habits.filter(h => h.group === group.id).length;
 
             return (
               <div key={group.id}>
@@ -398,8 +442,11 @@ export default function App() {
                       <motion.div
                         key={habit.id}
                         whileTap={{ scale: 0.98 }}
-                        onClick={() => toggleHabit(habit.id)}
-                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
+                        onPointerDown={() => setLongPressHabit(habit.id)}
+                        onPointerUp={() => setLongPressHabit(null)}
+                        onPointerLeave={() => setLongPressHabit(null)}
+                        onClick={() => !isCompleted && toggleHabit(habit.id)}
+                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'} ${longPressHabit === habit.id ? 'scale-95' : ''}`}
                       >
                         <div className="text-xl">{habit.icon}</div>
                         <div className="flex-1">
@@ -577,6 +624,21 @@ export default function App() {
       </div>
 
       <div className="space-y-4">
+        <div className="rpg-card p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-bold">Apariencia</h4>
+              <p className="text-xs text-rpg-text-secondary">Tema de la aplicación</p>
+            </div>
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className={`p-3 rounded-xl transition-all ${theme === 'dark' ? 'bg-white/10 text-yellow-400' : 'bg-slate-200 text-slate-700'}`}
+            >
+              {theme === 'dark' ? '🌙' : '☀️'}
+            </button>
+          </div>
+        </div>
+
         <div className="rpg-card p-1">
           <button className="w-full flex items-center justify-between p-4 hover:bg-white/5 rounded-xl transition-colors">
             <div className="flex items-center gap-3">
@@ -942,6 +1004,56 @@ export default function App() {
                 className="w-full rpg-gradient py-3 rounded-xl font-bold uppercase text-xs tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingHabit ? 'Guardar Cambios' : 'Crear Misión'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Context Menu (Long Press) */}
+      <AnimatePresence>
+        {contextMenuHabit && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-6"
+            onClick={() => setContextMenuHabit(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="rpg-card p-5 w-full max-w-xs flex flex-col items-center text-center gap-4 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute top-0 inset-x-0 h-1 rpg-gradient" />
+              <div className="text-4xl">{contextMenuHabit.icon}</div>
+              <h4 className="font-bold text-lg">{contextMenuHabit.name}</h4>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => {
+                    setEditingHabit(contextMenuHabit);
+                    setContextMenuHabit(null);
+                  }}
+                  className="flex-1 bg-cyan-500/20 text-cyan-400 py-3 rounded-xl font-bold text-sm hover:bg-cyan-500/30 transition-colors"
+                >
+                  ✏️ Editar
+                </button>
+                <button
+                  onClick={() => {
+                    deleteHabit(contextMenuHabit.id);
+                    setContextMenuHabit(null);
+                  }}
+                  className="flex-1 bg-red-500/20 text-red-400 py-3 rounded-xl font-bold text-sm hover:bg-red-500/30 transition-colors"
+                >
+                  🗑️ Eliminar
+                </button>
+              </div>
+              <button
+                onClick={() => setContextMenuHabit(null)}
+                className="text-rpg-text-secondary text-xs hover:text-white transition-colors"
+              >
+                Cancelar
               </button>
             </motion.div>
           </motion.div>
