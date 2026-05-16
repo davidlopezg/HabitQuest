@@ -1,5 +1,4 @@
 @import "tailwindcss";
-/* HabitQuest v2 - Light Theme Fix 2024-05-16 */
 @import url('https://fonts.googleapis.com/css2?family=Epilogue:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap');
 
 @theme {
@@ -20,65 +19,105 @@
   body {
     @apply bg-rpg-bg text-white font-sans overflow-x-hidden transition-colors duration-300;
   }
-  
-  /* Light theme overrides */
-  [data-theme="light"] body {
-    @apply bg-slate-100 text-slate-800;
-  }
-  
-  [data-theme="light"] .rpg-card {
-    @apply bg-white shadow-md border border-slate-200;
-  }
-  
-  [data-theme="light"] .rpg-gradient {
-    background: linear-gradient(135deg, #FF8C00, #FF6B6B);
-  }
-  
-  [data-theme="light"] .text-rpg-text-secondary {
-    @apply text-slate-500;
-  }
-  
-  [data-theme="light"] h1,
-  [data-theme="light"] h2,
-  [data-theme="light"] h3,
-  [data-theme="light"] h4,
-  [data-theme="light"] h5 {
-    @apply text-slate-800;
-  }
-  
-  [data-theme="light"] nav {
-    @apply bg-white/90 border-slate-200;
-  }
-  
-  [data-theme="light"] nav button {
-    @apply text-slate-600;
-  }
-  
-  [data-theme="light"] nav button.active {
-    @apply text-slate-900;
-  }
-  
-  [data-theme="light"] input,
-  [data-theme="light"] select {
-    @apply bg-slate-100 border-slate-300 text-slate-800;
-  }
-  
-  [data-theme="light"] .bg-black\/30,
-  [data-theme="light"] .bg-black\/40 {
-    @apply bg-slate-200;
-  }
-  
-  [data-theme="light"] .bg-white\/5 {
-    @apply bg-slate-100;
-  }
-  
-  [data-theme="light"] .border-white\/5 {
-    @apply border-slate-200;
-  }
-  
-  [data-theme="light"] .border-white\/10 {
-    @apply border-slate-300;
-  }
+}
+
+/* IMPORTANT: Light theme must override Tailwind classes with high specificity */
+html[data-theme="light"] body {
+  background-color: #F5F5F7 !important;
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .rpg-card,
+html[data-theme="light"] div.rpg-card,
+html[data-theme="light"] section.rpg-card,
+html[data-theme="light"] article.rpg-card {
+  background-color: #FFFFFF !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+}
+
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4,
+html[data-theme="light"] h5 {
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .text-rpg-text-secondary {
+  color: #64748b !important;
+}
+
+html[data-theme="light"] nav {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+html[data-theme="light"] nav button {
+  color: #64748b !important;
+}
+
+html[data-theme="light"] nav button.active,
+html[data-theme="light"] nav button[class*="active"] {
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .bg-black\/30 {
+  background-color: rgba(226, 232, 240, 0.5) !important;
+}
+
+html[data-theme="light"] .bg-black\/40 {
+  background-color: rgba(226, 232, 240, 0.6) !important;
+}
+
+html[data-theme="light"] .bg-white\/5 {
+  background-color: rgba(241, 245, 249, 0.5) !important;
+}
+
+html[data-theme="light"] .bg-white\/10 {
+  background-color: rgba(241, 245, 249, 1) !important;
+}
+
+html[data-theme="light"] .border-white\/5 {
+  border-color: rgba(226, 232, 240, 0.5) !important;
+}
+
+html[data-theme="light"] .border-white\/10 {
+  border-color: rgba(203, 213, 225, 0.5) !important;
+}
+
+html[data-theme="light"] .text-white {
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .rpg-gradient {
+  background: linear-gradient(135deg, #FF8C00, #FF6B6B) !important;
+}
+
+html[data-theme="light"] .rpg-gradient-text {
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  color: transparent !important;
+  background-image: linear-gradient(135deg, #FF8C00, #FF6B6B) !important;
+}
+
+html[data-theme="light"] .rpg-gradient.py-3,
+html[data-theme="light"] button.rpg-gradient {
+  background: linear-gradient(135deg, #FF8C00, #FF6B6B) !important;
+  color: white !important;
+}
+
+/* Progress bars */
+html[data-theme="light"] .bg-black\/40.rounded-full,
+html[data-theme="light"] div[class*="rounded-full"][class*="bg-black"] {
+  background-color: #e2e8f0 !important;
 }
 
 .rpg-gradient {

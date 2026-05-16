@@ -457,20 +457,25 @@ export default function App() {
 
   const resetAll = () => {
     if (confirm('¿Estás seguro? Perderás todo tu progreso RPG.')) {
-      setUserData({
-        name: 'Aventurero',
-        avatar: '🦸',
+      setUserData(prev => ({
+        ...prev,
         xp: 0,
         gems: 0,
         globalStreak: 0,
         lastActiveDate: today,
-        habits: INITIAL_HABITS,
         unlockedAchievements: [],
         streakFreeze: 0,
         groupStreaks: { morning: 0, midday: 0, afternoon: 0, night: 0 },
         lastGroupActivity: {},
-        dailyChallenges: []
-      });
+        dailyChallenges: [],
+        // Keep current habits (don't reset to INITIAL_HABITS)
+        // Reset each habit's streak and completed dates
+        habits: prev.habits.map(h => ({
+          ...h,
+          streak: 0,
+          completedDates: []
+        }))
+      }));
     }
   };
 
