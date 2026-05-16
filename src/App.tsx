@@ -232,6 +232,7 @@ export default function App() {
     const choseLocal = localStorage.getItem('habitquest_local_mode');
     if (choseLocal === 'true') {
       setFirebaseUser({ uid: 'local', displayName: 'Usuario Local', email: null, photoURL: null });
+      return; // Don't connect to Firebase in local mode
     }
 
     // Listen for auth state changes
@@ -245,7 +246,12 @@ export default function App() {
         });
         
         // Load data from Firestore
-        await loadFromFirestore(user.uid);
+        try {
+          await loadFromFirestore(user.uid);
+        } catch (e) {
+          console.error('Error loading from Firestore:', e);
+          // Continue with local data if cloud fails
+        }
       } else {
         setFirebaseUser(null);
         setSyncStatus('local');
@@ -263,13 +269,21 @@ export default function App() {
       
       if (docSnap.exists()) {
         const cloudData = docSnap.data() as UserData;
-        setUserData(prev => ({
-          ...cloudData,
-          // Merge with local habits if they exist in local but not in cloud
-          habits: cloudData.habits.length > 0 ? cloudData.habits : prev.habits
-        }));
-        setSyncStatus('synced');
+        // Only load from cloud if it has actual data (not default values)
+        if (cloudData.xp > 0 || cloudData.habits.length > 0) {
+          console.log('Loading from cloud:', cloudData);
+          setUserData(prev => ({
+            ...cloudData,
+            // Keep local habits if cloud is empty
+            habits: cloudData.habits.length > 0 ? cloudData.habits : prev.habits
+          }));
+          setSyncStatus('synced');
+        } else {
+          console.log('Cloud data is empty, keeping local');
+          setSyncStatus('local');
+        }
       } else {
+        console.log('No cloud data, keeping local');
         // First time user - upload local data to cloud
         await saveToFirestore(uid, userData);
         setSyncStatus('synced');
@@ -325,11 +339,15 @@ export default function App() {
 
   // Auto-sync to localStorage and cloud
   useEffect(() => {
+    // Always save to localStorage
     localStorage.setItem('habitquest_data', JSON.stringify(userData));
+    console.log('Saved to localStorage. XP:', userData.xp, 'Gems:', userData.gems);
+    
+    // Check daily reset
     checkDailyReset();
     
-    // Auto-sync to cloud if logged in
-    if (firebaseUser) {
+    // Auto-sync to cloud if logged in and not local mode
+    if (firebaseUser && firebaseUser.uid !== 'local') {
       const timeoutId = setTimeout(() => {
         saveToFirestore(firebaseUser.uid, userData);
       }, 1000); // Debounce 1 second
