@@ -769,9 +769,16 @@ export default function App() {
         </div>
       </div>
 
-      {/* Calendar */}
+      {/* Calendar - inside stats page */}
       <div className="rpg-card p-5">
-        <h3 className="font-bold mb-4">📅 Calendario <span className="text-xs text-rpg-text-secondary">(este mes)</span></h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold">📅 Calendario</h3>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-rpg-text-secondary">
+              {new Date(currentYear, currentMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
         <div className="grid grid-cols-7 gap-1 mb-2">
           {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
             <div key={d} className="text-center text-[10px] text-rpg-text-secondary font-bold">{d}</div>
