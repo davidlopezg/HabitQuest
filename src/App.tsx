@@ -270,21 +270,24 @@ export default function App() {
       
       if (docSnap.exists()) {
         const cloudData = docSnap.data() as UserData;
-        // Only load from cloud if it has actual data (not default values)
-        if (cloudData.xp > 0 || cloudData.habits.length > 0) {
-          console.log('Loading from cloud:', cloudData);
-          setUserData(prev => ({
-            ...cloudData,
-            // Keep local habits if cloud is empty
-            habits: cloudData.habits.length > 0 ? cloudData.habits : prev.habits
-          }));
-          setSyncStatus('synced');
+        // Only use cloud data if it has more XP than local (meaning it's newer)
+        const localData = localStorage.getItem('habitquest_data');
+        const localXp = localData ? JSON.parse(localData).xp : 0;
+        
+        console.log('Cloud XP:', cloudData.xp, 'Local XP:', localXp);
+        
+        if (cloudData.xp > localXp && cloudData.habits.length > 0) {
+          console.log('Loading from cloud (newer data)');
+          setUserData(cloudData);
+          localStorage.setItem('habitquest_data', JSON.stringify(cloudData));
         } else {
-          console.log('Cloud data is empty, keeping local');
-          setSyncStatus('local');
+          console.log('Keeping local data (local is newer or equal)');
+          // Save local data to cloud
+          await saveToFirestore(uid, userData);
         }
+        setSyncStatus('synced');
       } else {
-        console.log('No cloud data, keeping local');
+        console.log('No cloud data, saving local to cloud');
         // First time user - upload local data to cloud
         await saveToFirestore(uid, userData);
         setSyncStatus('synced');
