@@ -263,40 +263,12 @@ export default function App() {
   }, []);
 
   const loadFromFirestore = async (uid: string) => {
+    // Don't load from cloud - just save current data to cloud
+    // This avoids overwriting local data with cloud data
     try {
-      setIsSyncing(true);
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const cloudData = docSnap.data() as UserData;
-        // Only use cloud data if it has more XP than local (meaning it's newer)
-        const localData = localStorage.getItem('habitquest_data');
-        const localXp = localData ? JSON.parse(localData).xp : 0;
-        
-        console.log('Cloud XP:', cloudData.xp, 'Local XP:', localXp);
-        
-        if (cloudData.xp > localXp && cloudData.habits.length > 0) {
-          console.log('Loading from cloud (newer data)');
-          setUserData(cloudData);
-          localStorage.setItem('habitquest_data', JSON.stringify(cloudData));
-        } else {
-          console.log('Keeping local data (local is newer or equal)');
-          // Save local data to cloud
-          await saveToFirestore(uid, userData);
-        }
-        setSyncStatus('synced');
-      } else {
-        console.log('No cloud data, saving local to cloud');
-        // First time user - upload local data to cloud
-        await saveToFirestore(uid, userData);
-        setSyncStatus('synced');
-      }
+      await saveToFirestore(uid, userData);
     } catch (error) {
-      console.error('Error loading from Firestore:', error);
-      setSyncStatus('error');
-    } finally {
-      setIsSyncing(false);
+      console.error('Error syncing to Firestore:', error);
     }
   };
 
@@ -341,25 +313,11 @@ export default function App() {
     }
   };
 
-  // Auto-sync to localStorage and cloud
+  // Auto-sync to localStorage (always)
   useEffect(() => {
-    // Always save to localStorage
-    const dataString = JSON.stringify(userData);
-    localStorage.setItem('habitquest_data', dataString);
-    console.log('📦 Saving to localStorage:', userData.xp, 'XP', userData.gems, 'Gems', userData.habits.length, 'habits');
-    
-    // Check daily reset
-    checkDailyReset();
-    
-    // Auto-sync to cloud if logged in and not local mode
-    if (firebaseUser && firebaseUser.uid !== 'local') {
-      const timeoutId = setTimeout(() => {
-        console.log('☁️ Syncing to Firebase...');
-        saveToFirestore(firebaseUser.uid, userData);
-      }, 1000); // Debounce 1 second
-      return () => clearTimeout(timeoutId);
-    }
-  }, [userData, firebaseUser]);
+    // ALWAYS save to localStorage on every change
+    localStorage.setItem('habitquest_data', JSON.stringify(userData));
+  }, [userData]);
 
   // --- Logic ---
   const today = new Date().toISOString().split('T')[0];
