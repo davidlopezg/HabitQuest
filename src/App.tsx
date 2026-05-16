@@ -763,11 +763,12 @@ export default function App() {
                       <motion.div
                         key={habit.id}
                         whileTap={{ scale: 0.98 }}
-                        onPointerDown={() => setLongPressHabit(habit.id)}
-                        onPointerUp={() => setLongPressHabit(null)}
-                        onPointerLeave={() => setLongPressHabit(null)}
                         onClick={() => !isCompleted && toggleHabit(habit.id)}
-                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'} ${longPressHabit === habit.id ? 'scale-95' : ''}`}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenuHabit(habit);
+                        }}
+                        className={`rpg-card p-3 flex items-center gap-3 transition-all ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
                       >
                         <div className="text-xl">{habit.icon}</div>
                         <div className="flex-1">
