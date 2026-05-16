@@ -6,7 +6,7 @@
   --font-heading: "Epilogue", sans-serif;
   
   --color-rpg-bg: #1A1B2F;
-  --color-rpg-bg-light: #F0F0F5;
+  --color-rpg-bg-light: #F5F5F7;
   --color-rpg-card: #252745;
   --color-rpg-card-light: #FFFFFF;
   --color-rpg-accent-start: #FFB347;
@@ -20,12 +20,63 @@
     @apply bg-rpg-bg text-white font-sans overflow-x-hidden transition-colors duration-300;
   }
   
-  :root[data-theme="light"] body {
-    @apply bg-rpg-bg-light text-slate-800;
+  /* Light theme overrides */
+  [data-theme="light"] body {
+    @apply bg-slate-100 text-slate-800;
   }
   
-  :root[data-theme="light"] .rpg-card {
-    @apply bg-rpg-card-light shadow-md;
+  [data-theme="light"] .rpg-card {
+    @apply bg-white shadow-md border border-slate-200;
+  }
+  
+  [data-theme="light"] .rpg-gradient {
+    background: linear-gradient(135deg, #FF8C00, #FF6B6B);
+  }
+  
+  [data-theme="light"] .text-rpg-text-secondary {
+    @apply text-slate-500;
+  }
+  
+  [data-theme="light"] h1,
+  [data-theme="light"] h2,
+  [data-theme="light"] h3,
+  [data-theme="light"] h4,
+  [data-theme="light"] h5 {
+    @apply text-slate-800;
+  }
+  
+  [data-theme="light"] nav {
+    @apply bg-white/90 border-slate-200;
+  }
+  
+  [data-theme="light"] nav button {
+    @apply text-slate-600;
+  }
+  
+  [data-theme="light"] nav button.active {
+    @apply text-slate-900;
+  }
+  
+  [data-theme="light"] input,
+  [data-theme="light"] select {
+    @apply bg-slate-100 border-slate-300 text-slate-800;
+  }
+  
+  [data-theme="light"] .bg-black\/30,
+  [data-theme="light"] .bg-black\/40 {
+    @apply bg-slate-200;
+  }
+  
+  [data-theme="light"] .bg-white\/5 {
+    @apply bg-slate-100;
+  }
+  
+  [data-theme="light"] .border-white\/5 {
+    @apply border-slate-200;
+  }
+  
+  [data-theme="light"] .border-white\/10 {
+    @apply border-slate-300;
   }
 }
 
@@ -37,12 +88,9 @@
   @apply bg-rpg-card rounded-2xl shadow-lg border border-white/5 transition-colors duration-300;
 }
 
-:global([data-theme="light"]) .rpg-card {
-  @apply border-slate-200;
-}
-
-:global([data-theme="light"]) .rpg-text-secondary {
-  color: var(--color-rpg-text-secondary-light);
+.rpg-gradient-text {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(135deg, var(--color-rpg-accent-start), var(--color-rpg-accent-end));
 }
 
 .scrollbar-hide::-webkit-scrollbar {
