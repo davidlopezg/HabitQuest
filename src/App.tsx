@@ -671,7 +671,7 @@ export default function App() {
                   </div>
                   <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                     <div 
-                      className={`h-full ${group.color.replace('text-', 'bg-')}`} 
+                      className="h-full bg-yellow-500" 
                       style={{ width: total > 0 ? `${(completed / total) * 100}%` : '0%' }} 
                     />
                   </div>
