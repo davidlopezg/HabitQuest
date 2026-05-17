@@ -684,7 +684,7 @@ export default function App() {
         <div className="rpg-card p-5">
           <h3 className="font-bold mb-4">🏆 Top Hábitos</h3>
           <div className="space-y-2">
-            {getSortedHabits().slice(0, 5).map((habit, idx) => (
+            {[...userData.habits].sort((a, b) => b.streak - a.streak).slice(0, 5).map((habit, idx) => (
               <div key={habit.id} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-cyan-400 font-bold">#{idx + 1}</span>
