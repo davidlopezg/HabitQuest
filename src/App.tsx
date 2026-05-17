@@ -173,6 +173,10 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showFreezeUsed, setShowFreezeUsed] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
 
   // --- Logic ---
   const today = new Date().toISOString().split('T')[0];
@@ -643,6 +647,98 @@ export default function App() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Calendario Mensual */}
+        <div className="rpg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <button 
+              onClick={() => setCalendarMonth(prev => {
+                const d = new Date(prev.year, prev.month - 1, 1);
+                return { year: d.getFullYear(), month: d.getMonth() };
+              })}
+              className="p-2 hover:bg-white/10 rounded-lg"
+            >
+              ‹
+            </button>
+            <h3 className="font-bold">
+              {new Date(calendarMonth.year, calendarMonth.month).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+            </h3>
+            <button 
+              onClick={() => setCalendarMonth(prev => {
+                const d = new Date(prev.year, prev.month + 1, 1);
+                return { year: d.getFullYear(), month: d.getMonth() };
+              })}
+              className="p-2 hover:bg-white/10 rounded-lg"
+            >
+              ›
+            </button>
+          </div>
+          
+          {/* Días de la semana */}
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
+              <div key={d} className="text-center text-xs text-rpg-text-secondary py-2">{d}</div>
+            ))}
+          </div>
+          
+          {/* Días del mes */}
+          <div className="grid grid-cols-7 gap-1">
+            {(() => {
+              const firstDay = new Date(calendarMonth.year, calendarMonth.month, 1);
+              const lastDay = new Date(calendarMonth.year, calendarMonth.month + 1, 0);
+              const startDay = (firstDay.getDay() + 6) % 7; // Lunes = 0
+              const days = [];
+              
+              // Espacios vacíos antes del primer día
+              for (let i = 0; i < startDay; i++) {
+                days.push(<div key={`empty-${i}`} />);
+              }
+              
+              // Días del mes
+              for (let day = 1; day <= lastDay.getDate(); day++) {
+                const dateStr = `${calendarMonth.year}-${String(calendarMonth.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const completedCount = userData.habits.filter(h => h.completedDates.includes(dateStr)).length;
+                const isToday = dateStr === today;
+                const isFuture = dateStr > today;
+                
+                let bgColor = 'bg-white/5';
+                if (completedCount > 0) {
+                  const percentage = completedCount / userData.habits.length;
+                  if (percentage >= 1) bgColor = 'bg-green-500/40';
+                  else if (percentage >= 0.5) bgColor = 'bg-yellow-500/40';
+                  else bgColor = 'bg-orange-500/30';
+                }
+                
+                days.push(
+                  <div 
+                    key={day} 
+                    className={`aspect-square flex items-center justify-center rounded-lg text-sm ${bgColor} ${isToday ? 'ring-2 ring-cyan-400' : ''} ${isFuture ? 'opacity-30' : ''}`}
+                  >
+                    {day}
+                  </div>
+                );
+              }
+              
+              return days;
+            })()}
+          </div>
+          
+          {/* Leyenda */}
+          <div className="flex justify-center gap-4 mt-4 text-xs">
+            <span className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded bg-green-500/40" />
+              100%
+            </span>
+            <span className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded bg-yellow-500/40" />
+              50-99%
+            </span>
+            <span className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded bg-orange-500/30" />
+              1-49%
+            </span>
           </div>
         </div>
       </div>
