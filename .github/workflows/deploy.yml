@@ -32,11 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Update version
-        run: npx tsx scripts/update-version.ts
-
       - name: Build
-        run: npm run build
+        run: |
+          npx tsx scripts/update-version.ts
+          npx vite build
+          echo "--- Checking built version ---"
+          grep -o "v1\.0\.[0-9]*" dist/assets/*.js | head -1
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
