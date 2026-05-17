@@ -24,14 +24,4 @@ content = content.replace(
 // Write back
 writeFileSync(appFile, content);
 
-console.log(`✅ Version updated: ${version}`);
-
-// Auto-commit
-execSync('git add src/App.tsx');
-try {
-  execSync('git commit -m "chore: Update version to ' + version + '"');
-  execSync('git push');
-  console.log('✅ Auto-committed and pushed');
-} catch {
-  console.log('ℹ️ No changes to commit');
-}
+console.log(`✅ Version: ${version}`);

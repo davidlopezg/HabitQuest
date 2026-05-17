@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "tsx scripts/update-version.ts && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "version": "tsx scripts/update-version.ts && npm run build && git add src/App.tsx && git commit -m 'chore: Update version' && git push"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
