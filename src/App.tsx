@@ -70,7 +70,7 @@ interface DailyChallenge {
 
 // --- Constants ---
 const LEVEL_XP = 100;
-const APP_VERSION = 'v1.0.48-8a1eeec'; // Auto: v1.0.{commits}-{gitHash}
+const APP_VERSION = 'v1.0.49-be2e981'; // Auto: v1.0.{commits}-{gitHash}
 
 const HABIT_GROUPS = [
   { id: 'morning', name: 'MAÑANA', icon: '🌅', color: 'text-yellow-400' },
