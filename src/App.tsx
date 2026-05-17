@@ -671,7 +671,7 @@ export default function App() {
                   </div>
                   <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-yellow-500" 
+                      className={`h-full ${group.id === 'morning' ? 'bg-yellow-500' : group.id === 'midday' ? 'bg-orange-500' : group.id === 'afternoon' ? 'bg-blue-500' : 'bg-purple-500'}`} 
                       style={{ width: total > 0 ? `${(completed / total) * 100}%` : '0%' }} 
                     />
                   </div>
