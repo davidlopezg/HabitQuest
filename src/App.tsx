@@ -702,15 +702,15 @@ export default function App() {
           <div className="space-y-3">
             {userData.habits.map(h => {
               const count = h.completedDates.filter(d => d.startsWith(today.substring(0, 7))).length;
-              const days = new Date().getDate();
+              const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
               return (
                 <div key={h.id}>
                   <div className="flex justify-between text-xs mb-1">
                     <span>{h.icon} {h.name}</span>
-                    <span className="text-cyan-400">{count}/{days} días</span>
+                    <span className="text-cyan-400">{count}/{daysInMonth} días</span>
                   </div>
                   <div className="h-2 bg-black/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-cyan-500" style={{ width: `${(count / days) * 100}%` }} />
+                    <div className="h-full bg-cyan-500" style={{ width: `${(count / daysInMonth) * 100}%` }} />
                   </div>
                 </div>
               );
