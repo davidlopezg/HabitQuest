@@ -302,23 +302,22 @@ const [isLevelUp, setIsLevelUp] = useState(false)
 
 ## Sistema de Versión de App
 
-Formato: `v1.0.{commits}-{gitHash}`
+Formato: `v1.0.{commits}`
 
-Ejemplo: `v1.0.46-4d8c75c`
+Ejemplo: `v1.0.54`
 
 ### Cómo se genera:
 - **Previo**: `v1.0.` - versión base fija
 - **Número**: cantidad de commits del repositorio
-- **Hash**: caracteres cortos del commit actual (7 dígitos)
+- Se actualiza automáticamente en cada build (local o CI)
 
 ### Dónde se muestra:
 - Página **Hero** (tab perfil)
-- Visible para verificar si los cambios se han desplegado (especialmente en GitHub Pages)
+- Visible para verificar si los cambios se han desplegado
 
 ### Actualización:
-- Se actualiza automáticamente cada vez que se hace build
-- El número de commits cambia con cada nuevo commit
-- El hash cambia con cada nuevo commit
+- Script `scripts/update-version.ts` ejecuta antes de cada build
+- Ejecuta en local (`npm run build`) y en GitHub Actions
 
 ---
 
