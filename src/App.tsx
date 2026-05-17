@@ -70,6 +70,7 @@ interface DailyChallenge {
 
 // --- Constants ---
 const LEVEL_XP = 100;
+const APP_VERSION = 'v1.0.46-4d8c75c'; // Auto: v1.0.{commits}-{gitHash}
 
 const HABIT_GROUPS = [
   { id: 'morning', name: 'MAÑANA', icon: '🌅', color: 'text-yellow-400' },
@@ -828,6 +829,10 @@ export default function App() {
           <span className="font-bold">Gestionar Hábitos</span>
           <button onClick={() => setShowHabitManager(true)} className="px-4 py-2 rounded-lg bg-white/10 text-sm">Abrir</button>
         </div>
+      </div>
+      
+      <div className="text-center text-xs text-rpg-text-secondary">
+        {APP_VERSION}
       </div>
     </div>
   );
