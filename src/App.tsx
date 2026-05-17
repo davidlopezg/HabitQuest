@@ -228,8 +228,36 @@ export default function App() {
   const toggleHabit = (id: string) => {
     const habit = userData.habits.find(h => h.id === id);
     if (!habit) return;
-    if (habit.completedDates.includes(today)) return;
 
+    const isCompleted = habit.completedDates.includes(today);
+
+    if (isCompleted) {
+      // Desmarcar hábito
+      setUserData(prev => {
+        const newData = { ...prev };
+        const hIndex = newData.habits.findIndex(h => h.id === id);
+        const habitData = newData.habits[hIndex];
+        
+        // Calcular XP y gemas a restar (incluye bonus si había combo)
+        const baseXp = habitData.xp;
+        const bonusXp = habitData.streak >= 3 ? Math.floor(baseXp * 0.5) : 0; // Estima si tenía bonus
+        const xpToSubtract = baseXp + bonusXp;
+        const gemsToSubtract = 5;
+        
+        // Quitar de completedDates
+        newData.habits[hIndex].completedDates = habitData.completedDates.filter(d => d !== today);
+        // Decrementar streak (no por debajo de 0)
+        newData.habits[hIndex].streak = Math.max(0, habitData.streak - 1);
+        // Restar XP y gemas
+        newData.xp = Math.max(0, newData.xp - xpToSubtract);
+        newData.gems = Math.max(0, newData.gems - gemsToSubtract);
+        
+        return newData;
+      });
+      return;
+    }
+
+    // Completar hábito
     const prevXp = userData.xp;
     const prevLevel = Math.floor(prevXp / LEVEL_XP) + 1;
     
