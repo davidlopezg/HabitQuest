@@ -541,16 +541,10 @@ export default function App() {
                       <motion.div
                         key={habit.id}
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          if (!isCompleted) {
-                            toggleHabit(habit.id);
-                          }
-                        }}
+                        onClick={() => toggleHabit(habit.id)}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          if (!isCompleted) {
-                            setContextMenuHabit(habit);
-                          }
+                          setContextMenuHabit(habit);
                         }}
                         className={`rpg-card p-3 flex items-center gap-3 transition-all cursor-pointer ${isCompleted ? 'opacity-60 border-green-500/30' : 'hover:border-white/20'}`}
                       >
