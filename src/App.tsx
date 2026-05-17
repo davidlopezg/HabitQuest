@@ -1029,7 +1029,7 @@ export default function App() {
 
       {/* Add Button */}
       {activeTab === 'home' && (
-        <button onClick={() => setShowAddHabit(true)} className="fixed bottom-28 right-5 w-14 h-14 bg-cyan-500 rounded-full shadow-lg flex items-center justify-center z-40">
+        <button onClick={() => setShowAddHabit(true)} className="fixed bottom-28 right-5 w-14 h-14 rpg-gradient rounded-full shadow-lg flex items-center justify-center z-40">
           <Plus size={32} />
         </button>
       )}
