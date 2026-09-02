@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test": "node --test src/engine/engine.test.ts",
     "version": "tsx scripts/update-version.ts && npm run build && git add src/App.tsx && git commit -m 'chore: Update version' && git push"
   },
   "dependencies": {

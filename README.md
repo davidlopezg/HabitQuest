@@ -2,6 +2,19 @@
 
 **Gamifica tus hábitos como si fuera un RPG**
 
+> 🧠 **En evolución hacia Coach Adaptativo con IA** (objetivos en lenguaje natural → plan diario adaptativo → replanificación).
+> El diseño completo y el roadmap están en [`docs/COACH-ADAPTATIVO.md`](docs/COACH-ADAPTATIVO.md).
+> El motor determinista vive en [`src/engine/`](src/engine) y está verificado con tests: `npm test`.
+
+---
+
+## 🧪 Tests del motor adaptativo
+
+```bash
+npm test       # 21 tests del motor (node --test)
+npm run lint   # tsc --noEmit
+```
+
 ---
 
 ## ☁️ Configurar Sincronización en la Nube (Opcional)

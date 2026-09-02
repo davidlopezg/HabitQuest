@@ -8,7 +8,7 @@ const version = `v1.0.${commits}`;
 
 let content = readFileSync(appFile, 'utf-8');
 content = content.replace(
-  /const APP_VERSION = 'v\d+\.\d+(-[a-f0-9]+)?';/,
+  /const APP_VERSION = '[^']+';/,
   `const APP_VERSION = '${version}';`
 );
 
