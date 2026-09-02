@@ -44,6 +44,7 @@ import {
   rebuildPlan,
   recordCompletion,
   removeGoal,
+  postponeItem,
   resolveLevels,
   SLOT_DEFAULT_MIN,
   SLOT_LABEL,
@@ -475,6 +476,18 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setNotice({ icon: '🤝', text: reply.message });
   }
 
+  /** "Lo dejo para mañana": excusa solo este hábito hoy (la racha sigue). */
+  function postponeToday(item: PlanItem) {
+    const s = postponeItem(cs, today, item.behaviorId);
+    setCs(s);
+    setCannotItem(null);
+    setCannotText('');
+    setNotice({
+      icon: '⏭️',
+      text: 'Dejado para mañana. Hoy queda excusado (la racha continúa) y mañana vuelve a estar en tu plan automáticamente.',
+    });
+  }
+
   /** Introduce el siguiente hábito de la cola de UN objetivo concreto. */
   function introduceNextBehavior(goalId: string) {
     const g = cs.goals.find((x) => x.id === goalId);
@@ -736,6 +749,10 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             onSend={() => {
               const it = plan?.items.find((i) => i.id === cannotItem);
               if (it) sendCannot(it);
+            }}
+            onPostpone={() => {
+              const it = plan?.items.find((i) => i.id === cannotItem);
+              if (it) postponeToday(it);
             }}
           />
         )}
@@ -1420,12 +1437,14 @@ function CannotModal({
   setText,
   onClose,
   onSend,
+  onPostpone,
 }: {
   item?: PlanItem;
   text: string;
   setText: (v: string) => void;
   onClose: () => void;
   onSend: () => void;
+  onPostpone: () => void;
 }) {
   return (
     <motion.div
@@ -1470,8 +1489,14 @@ function CannotModal({
           ))}
         </div>
         <button
+          onClick={onPostpone}
+          className="w-full mt-3 py-2.5 bg-white/5 rounded-xl text-sm font-semibold text-rpg-text-secondary"
+        >
+          ⏭️ Prefiero dejarlo para mañana (no rompe la racha)
+        </button>
+        <button
           onClick={onSend}
-          className="w-full mt-4 py-3 bg-cyan-500 rounded-xl font-bold flex items-center justify-center gap-2"
+          className="w-full mt-2 py-3 bg-cyan-500 rounded-xl font-bold flex items-center justify-center gap-2"
         >
           <Send size={15} /> Replanificar mi día
         </button>

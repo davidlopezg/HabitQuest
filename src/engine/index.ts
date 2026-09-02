@@ -210,6 +210,41 @@ export function removeGoal(state: CoachState, goalId: string): CoachState {
   };
 }
 
+/**
+ * "Lo dejo para mañana": excusa SOLO este hábito hoy (no rompe racha, cuenta
+ * como excusado en adherencia) y deja el resto del día igual. Mañana el plan
+ * se regenera y el hábito vuelve a estar programado.
+ */
+export function postponeItem(
+  state: CoachState,
+  date: string,
+  behaviorId: string,
+): CoachState {
+  const plan = state.plans[date];
+  if (!plan) return state;
+  const item = plan.items.find((i) => i.behaviorId === behaviorId && i.status === 'pending');
+  if (!item) return state;
+  const updatedPlan: DayPlan = {
+    ...plan,
+    items: plan.items.map((i) =>
+      i.id === item.id
+        ? { ...i, status: 'excused' as const, reasonCode: 'postpone' as const }
+        : i,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+  let s: CoachState = { ...state, plans: { ...state.plans, [date]: updatedPlan } };
+  s = recordCompletion(s, {
+    date,
+    behaviorId,
+    minutes: 0,
+    reasonCode: 'postpone',
+    dayMode: plan.mode,
+    plannedMinutes: item.minutes,
+  });
+  return s;
+}
+
 /** Añade el resultado de la descomposición de un objetivo al estado. */
 export function applyDecomposed(
   state: CoachState,

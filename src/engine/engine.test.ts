@@ -29,7 +29,7 @@ import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
 import { adherence, streakDays } from './history.ts';
-import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion, removeGoal } from './index.ts';
+import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion, removeGoal, postponeItem } from './index.ts';
 
 // ---------- helpers ----------
 
@@ -397,6 +397,23 @@ test('plan: respeta la hora exacta (startMinute) del comportamiento', () => {
   const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
   const { plan } = getOrBuildPlan(state, c);
   assert.equal(plan.items[0].startMinute, 660);
+});
+
+test('replan: "lo dejo para mañana" excusa hoy y el hábito vuelve mañana', () => {
+  let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
+  state = s1;
+  const b = state.behaviors[0];
+  state = postponeItem(state, '2025-06-15', b.id);
+  const entry = state.logs.find((l) => l.behaviorId === b.id)!;
+  assert.equal(entry.kind, 'excused');
+  assert.equal(entry.reasonCode, 'postpone');
+  assert.equal(state.plans['2025-06-15'].items[0].status, 'excused');
+  // Mañana el plan se regenera y el hábito vuelve a estar programado.
+  const c2 = ci({ date: '2025-06-16', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan: p2 } = getOrBuildPlan(state, c2);
+  assert.ok(p2.items.some((i) => i.behaviorId === b.id));
 });
 
 test('objetivos: removeGoal elimina objetivo, hábitos, logs y sus items del plan', () => {

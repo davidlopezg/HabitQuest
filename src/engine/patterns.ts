@@ -114,6 +114,7 @@ const REASON_LABELS: Partial<Record<ReasonCode, string>> = {
   family: 'compromisos familiares',
   illness: 'enfermedad',
   no_motivation: 'la falta de motivación',
+  postpone: 'dejarlo para mañana',
   distraction: 'las distracciones',
   other: 'otros motivos',
 };

@@ -88,6 +88,7 @@ export type ReasonCode =
   | 'illness'
   | 'no_motivation'
   | 'distraction'
+  | 'postpone' // elección explícita: dejarlo para mañana
   | 'other';
 
 export type LogKind = 'full' | 'minimal' | 'excused' | 'miss';

@@ -15,6 +15,7 @@ import {
   applyCoachReply,
   classifyReason,
   handleCannot,
+  postponeItem,
 } from './engine/index.ts';
 import {
   chatWithCoach,
@@ -74,16 +75,25 @@ export default function CoachChat({ open, onClose, state, setState, today }: Pro
       // 1) Acciones REALES: el coach ejecuta (replanifica el día), no solo aconseja.
       if (looksLikeCannot(text) && pending.length > 0) {
         const target = pending[0];
-        const code = classifyReason(text);
-        const reply = handleCannot({
-          state: s,
-          date: today,
-          behaviorId: target.behaviorId,
-          reasonText: text,
-          nowMinutes: new Date().getHours() * 60 + new Date().getMinutes(),
-        });
-        const final = applyCoachReply(s, today, reply, target.behaviorId, target.minutes, code);
-        setFinal(final, reply.message);
+        if (/mañana|otro\s*d[ií]a/i.test(text)) {
+          // “Lo dejo para mañana” → excusa solo este hábito hoy (no rompe racha).
+          const final = postponeItem(s, today, target.behaviorId);
+          setFinal(
+            final,
+            'Hecho: lo dejamos para mañana. Hoy queda excusado (tu racha continúa) y mañana vuelve a estar en tu plan. Si quieres, cuéntame qué ha pasado para tenerlo en cuenta.',
+          );
+        } else {
+          const code = classifyReason(text);
+          const reply = handleCannot({
+            state: s,
+            date: today,
+            behaviorId: target.behaviorId,
+            reasonText: text,
+            nowMinutes: new Date().getHours() * 60 + new Date().getMinutes(),
+          });
+          const final = applyCoachReply(s, today, reply, target.behaviorId, target.minutes, code);
+          setFinal(final, reply.message);
+        }
       } else if (
         text.toLowerCase().includes('aprendid') ||
         text.toLowerCase().includes('qué sabes') ||

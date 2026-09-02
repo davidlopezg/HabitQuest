@@ -30,6 +30,7 @@ const REASON_KEYWORDS: Record<ReasonCode, string[]> = {
   illness: ['enferm', 'dolor', 'gripe', 'resfriad', 'fiebre', 'migraña', 'malestar', 'cabeza', 'estómago', 'vómit'],
   no_motivation: ['no me apetece', 'perez', 'motiv', 'no me sale', 'ganas', 'aburrid', 'no quiero'],
   distraction: ['móvil', 'distra', 'pierdo', 'internet', 'series', 'youtube', 'aplaz', 'redes', 'scroll'],
+  postpone: [],
   other: [],
 };
 
@@ -51,6 +52,7 @@ export const REASON_LABEL: Record<ReasonCode, string> = {
   illness: 'malestar físico',
   no_motivation: 'falta de motivación',
   distraction: 'distracción',
+  postpone: 'dejarlo para mañana',
   other: 'otro motivo',
 };
 
