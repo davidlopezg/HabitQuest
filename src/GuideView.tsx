@@ -36,7 +36,7 @@ const SECTIONS: Section[] = [
       ['1 · Objetivo', 'Le dices qué quieres conseguir, con tus palabras ("Quiero ponerme en forma"). La app lo descompone en hábitos pequeños.'],
       ['2 · Check-in (20 s)', 'Por la mañana: energía, ánimo, concentración, estrés, tiempo disponible e intención del día.'],
       ['3 · Plan del día', 'La app genera AHORA (lo siguiente que toca), Después (el resto con su hora) y HOY (tu progreso).'],
-      ['4 · Hazlo', 'EMPEZAR para ver las opciones: ✅ completo, ⏱️ solo la versión mínima, o 🙅 "no puedo".'],
+      ['4 · Hazlo', 'EMPEZAR para ver las opciones: ✅ completo, ⏱️ solo la versión mínima, 🙅 “no puedo” (replanificar hoy o dejarlo para mañana).'],
       ['5 · Al día siguiente', 'Se cierra el día anterior solo y el plan se regenera con tu nuevo check-in.'],
     ],
   },
@@ -71,16 +71,17 @@ const SECTIONS: Section[] = [
   {
     id: 'nopuedo',
     icon: '🙅',
-    title: '"No puedo" → replanificación',
+    title: '"No puedo" → dos caminos',
     paragraphs: [
-      'Si algo se tuerce, explica por qué con tus palabras (botón NO PUEDO o en el chat). El coach interpreta el motivo y actúa:',
+      'Si algo se tuerce, explícale al coach por qué (botón NO PUEDO o en el chat). Interpreta el motivo y te da dos caminos:',
     ],
     bullets: [
-      ['Sin tiempo ahora', 'Busca un hueco libre más tarde y te lo propone ("¿Lo trasladamos a las 19:30?").'],
-      ['Agotado / enfermo', 'Pasa el día a modo mantenimiento. Recuperarte también forma parte del plan.'],
+      ['🙅 Replanificar HOY', 'Intenta que lo hagas hoy de forma adaptada: a otro hueco libre, en versión mínima o en modo mantenimiento. Ideal si “ahora no” pero el día aún puede.'],
+      ['⏭️ Dejarlo para MAÑANA', 'Excusa solo ese hábito hoy: tu racha NO se rompe, hoy no cuenta como fallo, y mañana vuelve a estar en tu plan automáticamente. Ideal si hoy no hay manera.'],
+      ['Agotado / enfermo', 'El coach pasa el día a modo mantenimiento. Recuperarte también forma parte del plan.'],
       ['Fuera de casa', 'Te sugiere la versión mínima o una alternativa sin material.'],
-      ['Sin ganas', 'Solo la versión mínima. La constancia gana a la motivación.'],
     ],
+    example: '“Me ha surgido una reunión” → si hay hueco, te lo propone (“¿Lo trasladamos a las 19:30?”); si no, lo dejáis para mañana. Nunca un “fracaso”.',
   },
   {
     id: 'horarios',
