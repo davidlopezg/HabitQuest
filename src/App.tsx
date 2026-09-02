@@ -176,6 +176,13 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showFreezeUsed, setShowFreezeUsed] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [showHomeInfo, setShowHomeInfo] = useState(() => {
+    try {
+      return localStorage.getItem('habitquest_home_info') !== 'dismissed';
+    } catch {
+      return true;
+    }
+  });
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
@@ -503,9 +510,32 @@ export default function App() {
         </div>
       </section>
 
+      {showHomeInfo && (
+        <section className="rpg-card p-4 border-l-4 border-l-amber-400">
+          <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">Modo manual</p>
+          <p className="text-xs text-rpg-text-secondary leading-relaxed">
+            Estas misiones las eliges tú y no se adaptan: los retos son iguales todos los días.
+            Si quieres hábitos que se ajusten a tu energía, se replanifiquen cuando no puedes y suban
+            de dificultad solos, usa el <b>Coach</b> ✨.
+          </p>
+          <button onClick={() => setActiveTab('coach')} className="mt-2 w-full py-2.5 rpg-gradient rounded-xl font-bold text-sm text-white">
+            Ir al Coach ✨
+          </button>
+          <button
+            onClick={() => {
+              setShowHomeInfo(false);
+              try { localStorage.setItem('habitquest_home_info', 'dismissed'); } catch { /* ignore */ }
+            }}
+            className="mt-2 w-full py-1.5 text-[10px] text-rpg-text-secondary"
+          >
+            Entendido, ocultar
+          </button>
+        </section>
+      )}
+
       <section>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="font-heading font-bold text-lg">Misiones de Hoy</h3>
+          <h3 className="font-heading font-bold text-lg">Misiones de Hoy <span className="text-[9px] text-amber-400/90 align-middle tracking-wide">MANUAL</span></h3>
           <div className="flex gap-2">
             <button onClick={() => setFocusMode(!focusMode)} className={`p-2 rounded-lg ${focusMode ? 'bg-cyan-500/30' : 'bg-white/5'}`}>
               {focusMode ? '👁️' : '🔍'}
