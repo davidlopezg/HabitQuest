@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CoachView from './CoachView.tsx';
+import GuideView from './GuideView.tsx';
 
 // --- Types ---
 interface Habit {
@@ -183,6 +184,7 @@ export default function App() {
       return true;
     }
   });
+  const [showGuide, setShowGuide] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
@@ -914,6 +916,13 @@ export default function App() {
         </div>
       </div>
       
+      <div className="rpg-card p-1">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3"><span className="text-xl">📖</span><span className="font-bold">Guía: cómo funciona la app</span></div>
+          <button onClick={() => setShowGuide(true)} className="px-4 py-2 rounded-lg bg-white/10 text-sm">Abrir</button>
+        </div>
+      </div>
+      
       <div className="text-center text-xs text-rpg-text-secondary">
         {APP_VERSION}
       </div>
@@ -984,6 +993,7 @@ export default function App() {
           <motion.div key="coach" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <CoachView
               onGoManual={() => setActiveTab('home')}
+              onOpenGuide={() => setShowGuide(true)}
               manualMissions={{
                 items: userData.habits.map((h) => ({
                   id: h.id,
@@ -1166,6 +1176,9 @@ export default function App() {
           <Plus size={32} />
         </button>
       )}
+
+      {/* Guía */}
+      {showGuide && <GuideView open onClose={() => setShowGuide(false)} />}
     </div>
   );
 }// test

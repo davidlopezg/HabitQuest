@@ -150,11 +150,13 @@ export interface ManualMissionsProps {
 
 interface CoachViewProps {
   onGoManual?: () => void;
+  /** Abre la guía completa de la app (desde onboarding). */
+  onOpenGuide?: () => void;
   /** Misiones manuales del modo libre (v1) para mostrarlas dentro del día del coach. */
   manualMissions?: ManualMissionsProps;
 }
 
-export default function CoachView({ onGoManual, manualMissions }: CoachViewProps) {
+export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: CoachViewProps) {
   const [cs, setCs] = useState<CoachState>(loadState);
   const [objective, setObjective] = useState('');
   const [notice, setNotice] = useState<{ icon: string; text: string } | null>(null);
@@ -545,6 +547,7 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
         onCreate={createObjective}
         examples={EXAMPLES}
         onGoManual={onGoManual}
+        onOpenGuide={onOpenGuide}
       />
     );
   }
@@ -1188,12 +1191,14 @@ function Onboarding({
   onCreate,
   examples,
   onGoManual,
+  onOpenGuide,
 }: {
   objective: string;
   setObjective: (v: string) => void;
   onCreate: (raw: string) => void;
   examples: string[];
   onGoManual?: () => void;
+  onOpenGuide?: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -1243,6 +1248,14 @@ function Onboarding({
       {onGoManual && (
         <button onClick={onGoManual} className="block mx-auto text-xs text-rpg-text-secondary underline">
           Ya tengo misiones manuales → Ir a Inicio
+        </button>
+      )}
+      {onOpenGuide && (
+        <button
+          onClick={onOpenGuide}
+          className="block mx-auto mt-2 text-xs text-cyan-300 underline"
+        >
+          📖 ¿Cómo funciona? Ver la guía
         </button>
       )}
     </div>
