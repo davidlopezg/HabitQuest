@@ -13,6 +13,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Circle, Clock, Flame, MessageCircle, Send, X, Zap } from 'lucide-react';
 import type {
   Behavior,
+  BehaviorLogEntry,
+  CoachCounters,
   CoachState,
   DayCheckIn,
   DayIntention,
@@ -22,6 +24,8 @@ import type {
   TimeAvailable,
 } from './engine/index.ts';
 import {
+  addDays,
+  adherence,
   applyDecomposed,
   CATALOG,
   classifyReason,
@@ -35,6 +39,7 @@ import {
   recommendLevel,
   rebuildPlan,
   recordCompletion,
+  resolveLevels,
   streakDays,
   todayKey,
   toHHMM,
@@ -135,9 +140,9 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   const [cannotText, setCannotText] = useState('');
   const [showIntro, setShowIntro] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [addGoalOpen, setAddGoalOpen] = useState(false);
   const [newGoalText, setNewGoalText] = useState('');
+  const [detailGoalId, setDetailGoalId] = useState<string | null>(null);
   // --- Notificaciones (recordatorios contextuales) ---
   const [remindEnabled, setRemindEnabled] = useState(() => {
     try {
@@ -173,16 +178,12 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   const checkinToday = cs.checkins.find((c) => c.date === today);
   const plan = cs.plans[today];
 
-  const selectedGoal =
-    activeGoals.find((g) => g.id === selectedGoalId) ?? activeGoals[0];
   const allBehaviors = useMemo(
     () => cs.behaviors.filter((b) => b.enabled && activeGoals.some((g) => g.id === b.goalId)),
     [cs.behaviors, activeGoals],
   );
-  const selectedBehaviors = selectedGoal
-    ? allBehaviors.filter((b) => b.goalId === selectedGoal.id)
-    : [];
   const anyConsolidated = allBehaviors.some((b) => cs.counters.consolidated.includes(b.id));
+  const detailGoal = activeGoals.find((g) => g.id === detailGoalId) ?? null;
 
   const phase: 'onboarding' | 'checkin' | 'plan' =
     activeGoals.length === 0 ? 'onboarding' : !checkinToday ? 'checkin' : 'plan';
@@ -321,7 +322,6 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
       next = rebuildPlan(next, checkinToday);
     }
     setCs(next);
-    setSelectedGoalId(outcome.goal.id);
     setAddGoalOpen(false);
     setNewGoalText('');
     const advice = !anyConsolidated
@@ -416,20 +416,22 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     setNotice({ icon: '🤝', text: reply.message });
   }
 
-  function introduceNextBehavior() {
-    if (!selectedGoal || selectedGoal.pipeline.length === 0) return;
-    const tplId = selectedGoal.pipeline[0];
+  /** Introduce el siguiente hábito de la cola de UN objetivo concreto. */
+  function introduceNextBehavior(goalId: string) {
+    const g = cs.goals.find((x) => x.id === goalId);
+    if (!g || g.pipeline.length === 0) return;
+    const tplId = g.pipeline[0];
     const t = CATALOG.find((x) => x.id === tplId);
     if (!t) return;
     const newB: Behavior = {
-      id: `${selectedGoal.id}__${tplId}`,
-      goalId: selectedGoal.id,
+      id: `${g.id}__${tplId}`,
+      goalId: g.id,
       templateId: t.id,
       name: t.name,
       icon: t.icon,
       category: t.category,
       enabled: true,
-      order: cs.behaviors.filter((b) => b.goalId === selectedGoal.id).length,
+      order: cs.behaviors.filter((b) => b.goalId === g.id).length,
       introducedAt: today,
       currentLevel: 1,
       preferredSlots: t.slots,
@@ -437,8 +439,8 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     let next: CoachState = {
       ...cs,
       behaviors: [...cs.behaviors, newB],
-      goals: cs.goals.map((g) =>
-        g.id === selectedGoal.id ? { ...g, pipeline: g.pipeline.slice(1) } : g,
+      goals: cs.goals.map((x) =>
+        x.id === g.id ? { ...x, pipeline: x.pipeline.slice(1) } : x,
       ),
     };
     // Replanificar hoy conservando lo ya hecho si hay check-in.
@@ -486,7 +488,7 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
               {WEEKDAY_ES[weekdayOf(today)]} · {today.split('-').reverse().join('/')}
             </p>
             {activeGoals.length === 1 ? (
-              <h1 className="font-heading font-bold text-xl">{selectedGoal?.title}</h1>
+              <h1 className="font-heading font-bold text-xl">{activeGoals[0].title}</h1>
             ) : (
               <h1 className="font-heading font-bold text-xl">Tus objetivos</h1>
             )}
@@ -501,55 +503,10 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
           </div>
         </div>
 
-        {/* Selector de objetivos (hasta 3) */}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {activeGoals.map((g) => (
-            <button
-              key={g.id}
-              onClick={() => setSelectedGoalId(g.id)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition ${
-                selectedGoal?.id === g.id
-                  ? 'bg-cyan-500/25 text-cyan-200 ring-1 ring-cyan-400/60'
-                  : 'bg-white/5 text-rpg-text-secondary'
-              }`}
-            >
-              🎯 {g.title}
-            </button>
-          ))}
-          {activeGoals.length < 3 && (
-            <button
-              onClick={() => setAddGoalOpen(true)}
-              className="px-3 py-1.5 rounded-full text-[11px] font-semibold text-cyan-300 bg-white/5 border border-dashed border-cyan-400/50"
-            >
-              ＋ Añadir objetivo
-            </button>
-          )}
-        </div>
-
         {plan && (
           <p className="mt-3 text-sm font-semibold rpg-gradient-text">{plan.headline}</p>
         )}
         {plan?.coachNote && <p className="mt-2 text-xs text-rpg-text-secondary leading-relaxed">{plan.coachNote}</p>}
-
-        {/* Hábitos del objetivo seleccionado */}
-        {selectedBehaviors.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {selectedBehaviors.map((b) => {
-              const def = levelDef(b);
-              return (
-                <span key={b.id} className="text-[11px] bg-white/5 px-2.5 py-1 rounded-full">
-                  {b.icon} {b.name} · Nv {b.currentLevel}
-                  {def ? ` (${def.minutes} min)` : ''}
-                </span>
-              );
-            })}
-            {selectedGoal && selectedGoal.pipeline.length > 0 && (
-              <span className="text-[11px] bg-white/5 px-2.5 py-1 rounded-full opacity-70">
-                +{selectedGoal.pipeline.length} en cola
-              </span>
-            )}
-          </div>
-        )}
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
@@ -567,6 +524,53 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
         </div>
       </header>
 
+      {/* Tus objetivos — acceso a las fases de cada uno */}
+      <section className="rpg-card p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-heading font-bold text-sm">🎯 Tus objetivos</h3>
+          <span className="text-[10px] text-rpg-text-secondary">{activeGoals.length}/3 en curso</span>
+        </div>
+        <div className="space-y-2">
+          {activeGoals.map((g) => {
+            const gb = allBehaviors.filter((b) => b.goalId === g.id);
+            const gConsolidated = gb.some((b) => cs.counters.consolidated.includes(b.id));
+            return (
+              <button
+                key={g.id}
+                onClick={() => setDetailGoalId(g.id)}
+                className="w-full flex items-center gap-3 bg-black/20 rounded-xl px-3 py-3 text-left hover:bg-black/30 transition"
+              >
+                <span className="text-2xl">🎯</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold">
+                    {g.title}
+                    {gConsolidated && <span className="ml-1.5 text-[10px] text-green-400">🌱 base consolidada</span>}
+                  </span>
+                  <span className="block text-[10px] text-rpg-text-secondary truncate mt-0.5">
+                    {gb.length > 0
+                      ? gb.map((b) => `${b.icon} ${b.name} · Nv${b.currentLevel}`).join('   ')
+                      : 'sin hábitos aún'}
+                    {g.pipeline.length > 0 ? `   +${g.pipeline.length} en cola` : ''}
+                  </span>
+                </span>
+                <span className="text-cyan-400 text-xl font-bold">›</span>
+              </button>
+            );
+          })}
+        </div>
+        {activeGoals.length < 3 && (
+          <button
+            onClick={() => setAddGoalOpen(true)}
+            className="mt-2 w-full py-2 rounded-xl text-sm font-semibold text-cyan-300 bg-white/5 border border-dashed border-cyan-400/40"
+          >
+            ＋ Añadir objetivo
+          </button>
+        )}
+        <p className="mt-2 text-[10px] text-rpg-text-secondary">
+          Toca un objetivo para ver sus fases, niveles y adherencia.
+        </p>
+      </section>
+
       <PlanBody
         plan={plan}
         behaviors={allBehaviors}
@@ -583,14 +587,6 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
         onCannot={setCannotItem}
         streakMax={Math.max(0, ...allBehaviors.map((b) => streakDays(cs.logs, b, today)))}
         xp={xp}
-        pipelineLength={selectedGoal?.pipeline.length ?? 0}
-        onIntroduceNext={
-          selectedGoal &&
-          selectedGoal.pipeline.length > 0 &&
-          selectedBehaviors.some((b) => cs.counters.consolidated.includes(b.id))
-            ? introduceNextBehavior
-            : undefined
-        }
         manualMissions={manualMissions}
       />
 
@@ -670,6 +666,30 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
         )}
       </AnimatePresence>
 
+      {/* Detalle de objetivo: fases y hábitos */}
+      <AnimatePresence>
+        {detailGoal && (
+          <GoalDetailOverlay
+            goal={detailGoal}
+            behaviors={cs.behaviors.filter((b) => b.enabled && b.goalId === detailGoal.id)}
+            logs={cs.logs}
+            counters={cs.counters}
+            today={today}
+            onClose={() => setDetailGoalId(null)}
+            onIntroduce={(goalId) => {
+              introduceNextBehavior(goalId);
+              setDetailGoalId(null);
+            }}
+            canIntroduce={
+              detailGoal.pipeline.length > 0 &&
+              cs.behaviors.some(
+                (b) => b.goalId === detailGoal.id && cs.counters.consolidated.includes(b.id),
+              )
+            }
+          />
+        )}
+      </AnimatePresence>
+
       <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
         El objetivo no cambia · se adapta el camino.
         {onGoManual && (
@@ -718,8 +738,6 @@ interface PlanBodyProps {
   onCannot: (id: string | null) => void;
   streakMax: number;
   xp: number;
-  pipelineLength: number;
-  onIntroduceNext?: () => void;
   manualMissions?: ManualMissionsProps;
   /** Solo con varios objetivos: devuelve el título del objetivo de un item. */
   goalTitleOf?: (goalId: string) => string | undefined;
@@ -895,15 +913,6 @@ function PlanBody(props: PlanBodyProps) {
             Van a tu modo manual (Inicio). Los hábitos del coach arriba sí se adaptan a ti.
           </p>
         </section>
-      )}
-
-      {props.onIntroduceNext && props.pipelineLength > 0 && (
-        <button
-          onClick={props.onIntroduceNext}
-          className="w-full py-3 bg-cyan-500/15 text-cyan-300 rounded-xl text-sm font-semibold"
-        >
-          🌱 Primer hábito consolidado → introducir el siguiente
-        </button>
       )}
     </>
   );
@@ -1268,6 +1277,224 @@ function CannotModal({
         >
           <Send size={15} /> Replanificar mi día
         </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ---------- Detalle de objetivo: fases, niveles y adherencia ----------
+
+interface GoalDetailProps {
+  goal: Goal;
+  behaviors: Behavior[];
+  logs: BehaviorLogEntry[];
+  counters: CoachCounters;
+  today: string;
+  onClose: () => void;
+  onIntroduce: (goalId: string) => void;
+  canIntroduce: boolean;
+}
+
+/** Progreso dentro del nivel actual: éxitos completos en la ventana. */
+function levelProgress(b: Behavior, logs: BehaviorLogEntry[], today: string) {
+  const def = levelDef(b)!;
+  const win = def.window ?? 7;
+  const from = addDays(today, -(win - 1));
+  const attempts = logs.filter(
+    (l) =>
+      l.behaviorId === b.id &&
+      l.date >= from &&
+      l.date <= today &&
+      l.plannedMinutes >= 0.75 * def.minutes,
+  );
+  const done = attempts.filter((l) => l.minutes >= 0.75 * def.minutes).length;
+  return { done, need: def.need ?? 5, window: win };
+}
+
+function GoalDetailOverlay({
+  goal,
+  behaviors,
+  logs,
+  counters,
+  today,
+  onClose,
+  onIntroduce,
+  canIntroduce,
+}: GoalDetailProps) {
+  const pipelineTemplates = goal.pipeline
+    .map((id) => CATALOG.find((t) => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[112] bg-black/85 flex items-end sm:items-center justify-center"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="rpg-card w-full max-w-lg max-h-[90vh] flex flex-col"
+      >
+        {/* Cabecera del objetivo */}
+        <div className="p-5 pb-3 border-b border-white/10">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Objetivo</p>
+              <h2 className="font-heading font-bold text-2xl leading-tight mt-0.5">{goal.title}</h2>
+              <p className="text-xs text-rpg-text-secondary mt-1 italic truncate">“{goal.raw}”</p>
+            </div>
+            <button onClick={onClose} className="p-2 text-rpg-text-secondary shrink-0">
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Cuerpo scrollable */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {behaviors.length === 0 && (
+            <p className="text-sm text-rpg-text-secondary text-center py-6">
+              Este objetivo aún no tiene hábitos activos.
+            </p>
+          )}
+
+          {behaviors.map((b) => {
+            const def = levelDef(b)!;
+            const nextDef = resolveLevels(b)[b.currentLevel]; // índice 0-based → nivel+1
+            const ladder = resolveLevels(b);
+            const a7 = Math.round(adherence(logs, b, today, 7).rate * 100);
+            const a30 = Math.round(adherence(logs, b, today, 30).rate * 100);
+            const streak = streakDays(logs, b, today);
+            const { done, need } = levelProgress(b, logs, today);
+            const consolidated = counters.consolidated.includes(b.id);
+            const pct = Math.min(100, Math.round((done / need) * 100));
+
+            return (
+              <div key={b.id} className="rpg-card p-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{b.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-heading font-bold text-lg">{b.name}</h4>
+                      {consolidated && (
+                        <span className="text-[9px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full font-bold uppercase">
+                          🌱 consolidado
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-rpg-text-secondary">
+                      Nivel {b.currentLevel} · objetivo {def.label ?? `${def.minutes} min`} · mín. {def.minimal} min
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progreso hacia el siguiente nivel */}
+                {!consolidated ? (
+                  <div className="mt-3">
+                    <div className="flex justify-between text-[10px] text-rpg-text-secondary mb-1">
+                      <span>
+                        Para subir a nivel {b.currentLevel + 1}
+                        {nextDef ? ` (${nextDef.minutes} min)` : ''}: {done}/{need} días completos
+                      </span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden">
+                      <div className="h-full rpg-gradient" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-green-300/80">
+                    Base consolidada: puedes subir de dificultad o introducir el siguiente hábito.
+                  </p>
+                )}
+
+                {/* Métricas */}
+                <div className="mt-3 flex gap-4 text-center">
+                  <div>
+                    <p className="text-sm font-bold text-orange-400">🔥{streak}</p>
+                    <p className="text-[9px] text-rpg-text-secondary uppercase">racha</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-cyan-400">{a7}%</p>
+                    <p className="text-[9px] text-rpg-text-secondary uppercase">adherencia 7d</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-cyan-400">{a30}%</p>
+                    <p className="text-[9px] text-rpg-text-secondary uppercase">30d</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-amber-400">⭐{counters.resilienceWins}</p>
+                    <p className="text-[9px] text-rpg-text-secondary uppercase">resiliencia</p>
+                  </div>
+                </div>
+
+                {/* Escalera de niveles */}
+                <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
+                  Fases ({ladder.length})
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ladder.map((lv) => {
+                    const passed = lv.level < b.currentLevel;
+                    const current = lv.level === b.currentLevel;
+                    return (
+                      <span
+                        key={lv.level}
+                        className={`text-[10px] px-2 py-1 rounded-lg ${
+                          current
+                            ? 'bg-cyan-500/25 ring-1 ring-cyan-400 text-cyan-100 font-bold'
+                            : passed
+                              ? 'bg-green-500/10 text-green-300/70'
+                              : 'bg-white/5 text-rpg-text-secondary'
+                        }`}
+                        title={lv.label ?? `${lv.minutes} min`}
+                      >
+                        {passed ? '✓' : current ? '●' : '·'} {lv.minutes} min
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Cola de próximos hábitos */}
+          {pipelineTemplates.length > 0 && (
+            <div className="rpg-card p-4 bg-black/20">
+              <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-2">
+                Próximos pasos de este objetivo (en cola)
+              </p>
+              <div className="space-y-1.5">
+                {pipelineTemplates.map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-xs opacity-80">
+                    <span>{t.icon}</span>
+                    <span>{t.name}</span>
+                    <span className="ml-auto text-rpg-text-secondary text-[10px]">espera su turno</span>
+                  </div>
+                ))}
+              </div>
+              {canIntroduce && (
+                <button
+                  onClick={() => onIntroduce(goal.id)}
+                  className="mt-3 w-full py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl text-sm font-bold"
+                >
+                  🌱 Base consolidada → introducir el siguiente ahora
+                </button>
+              )}
+              {!canIntroduce && pipelineTemplates.length > 0 && (
+                <p className="mt-2 text-[10px] text-rpg-text-secondary leading-relaxed">
+                  El siguiente se desbloquea cuando un hábito se consolide (nivel ≥ 5): no saturar es parte del método.
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
+            La dificultad sube y baja sola según tu adherencia real.
+          </p>
+        </div>
       </motion.div>
     </motion.div>
   );
