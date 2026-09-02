@@ -187,6 +187,29 @@ export function rebuildPlan(state: CoachState, checkin: DayCheckIn): CoachState 
   return { ...state, plans: { ...state.plans, [date]: plan } };
 }
 
+/**
+ * Elimina un objetivo y TODO lo asociado: comportamientos, registros, plan del
+ * día y marcadores de consolidación. Los demás objetivos no se ven afectados.
+ */
+export function removeGoal(state: CoachState, goalId: string): CoachState {
+  const doomed = new Set(state.behaviors.filter((b) => b.goalId === goalId).map((b) => b.id));
+  const plans: Record<string, DayPlan> = {};
+  for (const [date, p] of Object.entries(state.plans)) {
+    plans[date] = { ...p, items: p.items.filter((i) => !doomed.has(i.behaviorId)) };
+  }
+  return {
+    ...state,
+    goals: state.goals.filter((g) => g.id !== goalId),
+    behaviors: state.behaviors.filter((b) => b.goalId !== goalId),
+    logs: state.logs.filter((l) => !doomed.has(l.behaviorId)),
+    plans,
+    counters: {
+      ...state.counters,
+      consolidated: state.counters.consolidated.filter((id) => !doomed.has(id)),
+    },
+  };
+}
+
 /** Añade el resultado de la descomposición de un objetivo al estado. */
 export function applyDecomposed(
   state: CoachState,

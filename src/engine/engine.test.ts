@@ -29,7 +29,7 @@ import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
 import { adherence, streakDays } from './history.ts';
-import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion } from './index.ts';
+import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion, removeGoal } from './index.ts';
 
 // ---------- helpers ----------
 
@@ -397,6 +397,28 @@ test('plan: respeta la hora exacta (startMinute) del comportamiento', () => {
   const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
   const { plan } = getOrBuildPlan(state, c);
   assert.equal(plan.items[0].startMinute, 660);
+});
+
+test('objetivos: removeGoal elimina objetivo, hábitos, logs y sus items del plan', () => {
+  let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
+  state = applyDecomposed(state, decompose('Quiero leer más', '2025-06-15'));
+  const g1 = state.goals.find((g) => g.area === 'fitness')!;
+  const g2 = state.goals.find((g) => g.area === 'reading')!;
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
+  state = s1;
+  const firstItem = p1.items.find((i) => i.goalId === g1.id)!;
+  state = recordCompletion(state, { date: '2025-06-15', behaviorId: firstItem.behaviorId, minutes: firstItem.minutes, plannedMinutes: firstItem.minutes, dayMode: p1.mode });
+  assert.ok(state.logs.length > 0);
+
+  state = removeGoal(state, g1.id);
+  assert.equal(state.goals.length, 1);
+  assert.equal(state.goals[0].id, g2.id);
+  assert.ok(!state.behaviors.some((b) => b.goalId === g1.id));
+  assert.equal(state.logs.length, 0); // el log del hábito eliminado se limpia
+  const items = state.plans['2025-06-15'].items;
+  assert.ok(!items.some((i) => i.goalId === g1.id));
+  assert.ok(items.some((i) => i.goalId === g2.id));
 });
 
 test('plan: rebuildPlan al añadir un 2º objetivo conserva lo ya hecho y suma lo nuevo', () => {

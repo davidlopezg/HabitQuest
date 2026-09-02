@@ -43,6 +43,7 @@ import {
   recommendLevel,
   rebuildPlan,
   recordCompletion,
+  removeGoal,
   resolveLevels,
   SLOT_DEFAULT_MIN,
   SLOT_LABEL,
@@ -537,6 +538,16 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     });
   }
 
+  /** Elimina un objetivo y todo lo asociado (motor). */
+  function deleteGoal(goalId: string) {
+    let s = removeGoal(cs, goalId);
+    const ck = s.checkins.find((c) => c.date === today);
+    if (ck) s = rebuildPlan(s, ck);
+    setCs(s);
+    setDetailGoalId(null);
+    setNotice({ icon: '🗑️', text: 'Objetivo eliminado. Puedes crear otro cuando quieras.' });
+  }
+
   // ---------- render por fase ----------
 
   if (phase === 'onboarding') {
@@ -801,6 +812,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             today={today}
             onClose={() => setDetailGoalId(null)}
             onEditBehavior={updateBehaviorTime}
+            onDelete={deleteGoal}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
               setDetailGoalId(null);
@@ -1479,6 +1491,7 @@ interface GoalDetailProps {
   onClose: () => void;
   onIntroduce: (goalId: string) => void;
   onEditBehavior: (id: string, patch: { slot?: DaySlot; startMinute?: number }) => void;
+  onDelete: (goalId: string) => void;
   canIntroduce: boolean;
 }
 
@@ -1507,8 +1520,10 @@ function GoalDetailOverlay({
   onClose,
   onIntroduce,
   onEditBehavior,
+  onDelete,
   canIntroduce,
 }: GoalDetailProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const pipelineTemplates = goal.pipeline
     .map((id) => CATALOG.find((t) => t.id === id))
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
@@ -1727,6 +1742,39 @@ function GoalDetailOverlay({
               )}
             </div>
           )}
+
+          {/* Zona de peligro: eliminar objetivo */}
+          <div className="pt-1">
+            {!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-red-300/90 bg-red-500/10"
+              >
+                🗑️ Eliminar objetivo
+              </button>
+            ) : (
+              <div className="bg-red-500/10 rounded-xl p-3">
+                <p className="text-xs text-red-200/90 leading-relaxed mb-2">
+                  ¿Seguro? Se eliminarán sus hábitos, historial y el plan de hoy. Esta acción no se
+                  puede deshacer.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="flex-1 py-2 bg-white/5 rounded-xl text-sm text-rpg-text-secondary"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => onDelete(goal.id)}
+                    className="flex-1 py-2 bg-red-500/20 text-red-300 rounded-xl text-sm font-bold"
+                  >
+                    Sí, eliminar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
             La dificultad sube y baja sola según tu adherencia real.
