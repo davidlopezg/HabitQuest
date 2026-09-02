@@ -52,3 +52,21 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Clic en una notificación → enfocar la app (o abrirla).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/HabitQuest/';
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const client = all.find((c) => c.visibilityState === 'visible') || all[0];
+      if (client) {
+        await client.focus();
+        if ('navigate' in client) client.navigate(target).catch(() => {});
+      } else {
+        await self.clients.openWindow(target);
+      }
+    })()
+  );
+});

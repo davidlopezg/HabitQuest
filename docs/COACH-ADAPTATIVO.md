@@ -186,7 +186,7 @@ a 10 min.
 | 2 | UI: onboarding objetivo + check-in + plan en Home | ✅ hecho (Fase 2) |
 | 3 | Flujo "No puedo" + replanificación en UI | pendiente |
 | 4 | Patrones/insights + "¿Qué has aprendido de mí?" | pendiente |
-| 5 | Notificaciones (SW + Notification API) | pendiente |
+| 5 | Notificaciones contextuales (SW + Notification API, aviso por hábito) | ✅ hecho |
 | 6 | Migración v1→v2 de datos + pruebas de integración | pendiente |
 | 7 | Pulido UX, tests E2E de flujos, deploy | pendiente |
 

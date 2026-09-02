@@ -8,7 +8,7 @@
  * Estilo visual consistente con la app RPG existente.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Clock, Flame, Send, X, Zap, MessageCircle } from 'lucide-react';
 import type {
@@ -114,6 +114,15 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
   const [cannotText, setCannotText] = useState('');
   const [showIntro, setShowIntro] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  // --- Notificaciones (recordatorios contextuales) ---
+  const [remindEnabled, setRemindEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('habitquest_reminders') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const [notifState, setNotifState] = useState<'undecided' | 'granted' | 'denied' | 'unsupported'>('undecided');
 
   const today = todayKey();
 
@@ -153,6 +162,89 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
 
   const xp = cs.counters.xp ?? 0;
   const coachLevel = Math.floor(xp / 100) + 1;
+
+  // ---------- notificaciones ----------
+
+  useEffect(() => {
+    if (typeof Notification === 'undefined') {
+      setNotifState('unsupported');
+      return;
+    }
+    setNotifState(Notification.permission as 'granted' | 'denied' | 'default');
+  }, []);
+
+  async function enableReminders() {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        const r = await Notification.requestPermission();
+        setNotifState(r === 'granted' ? 'granted' : r === 'denied' ? 'denied' : 'undecided');
+      } catch {
+        /* ignore */
+      }
+    }
+    const next = !remindEnabled;
+    setRemindEnabled(next);
+    try {
+      localStorage.setItem('habitquest_reminders', next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Recordatorio único por elemento del plan cuando llega (o ha pasado poco de) su hora. */
+  function maybeRemind() {
+    if (!remindEnabled || phase !== 'plan' || !plan) return;
+    const now = nowMin();
+    const pending = plan.items.filter((i) => i.status === 'pending');
+    if (pending.length === 0) return;
+    const storeKey = `habitquest_reminded_${today}`;
+    let done: Set<string>;
+    try {
+      done = new Set(JSON.parse(localStorage.getItem(storeKey) ?? '[]'));
+    } catch {
+      done = new Set();
+    }
+    for (const it of pending) {
+      if (done.has(it.id)) continue;
+      // Ventana: 5 min antes de la hora hasta 90 min después. Una sola vez.
+      if (it.startMinute - now <= 5 && it.startMinute - now >= -90) {
+        done.add(it.id);
+        try {
+          localStorage.setItem(storeKey, JSON.stringify([...done]));
+        } catch {
+          /* ignore */
+        }
+        const b = behaviors.find((x) => x.id === it.behaviorId);
+        const def = b ? levelDef(b) : undefined;
+        const shortLabel = it.label.replace(/\s*\(mínimo\)/, '');
+        const body =
+          plan.mode === 'recovery' || plan.mode === 'minimal' || it.version === 'minimal'
+            ? `${shortLabel}. Es la versión mínima: con mantener el hábito basta hoy.`
+            : `${shortLabel}. Si hoy no tienes energía, podemos hacer la versión mínima de ${def?.minimal ?? 1} min.`;
+        if (notifState === 'granted') {
+          try {
+            new Notification(`${b?.icon ?? '⏰'} ${it.label}`, {
+              body,
+              tag: it.id,
+              data: { url: window.location.href },
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+        setNotice({ icon: b?.icon ?? '⏰', text: body });
+        break; // un aviso por ronda
+      }
+    }
+  }
+  const remindRef = useRef(maybeRemind);
+  remindRef.current = maybeRemind;
+  useEffect(() => {
+    const run = () => remindRef.current();
+    run();
+    const id = setInterval(run, 45000);
+    return () => clearInterval(id);
+  }, []);
 
   // ---------- acciones ----------
 
@@ -350,6 +442,20 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
               </span>
             );
           })}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <button
+            onClick={() => void enableReminders()}
+            className={`text-[11px] px-3 py-1.5 rounded-full font-semibold ${remindEnabled ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-rpg-text-secondary'}`}
+          >
+            {remindEnabled ? '🔔 Avisos activados' : '🔕 Avisos desactivados'}
+          </button>
+          {notifState === 'denied' && (
+            <span className="text-[10px] text-amber-400/90">permiso denegado en el navegador</span>
+          )}
+          {notifState === 'unsupported' && (
+            <span className="text-[10px] text-rpg-text-secondary">este navegador no permite avisos nativos</span>
+          )}
         </div>
       </header>
 
