@@ -11,6 +11,7 @@
 >
 > 🤖 **Chat con coach IA (MiniMax)**: habla con el coach, que replanifica tu día de verdad.
 > 🔔 **Avisos inteligentes**: cuando llega la hora de un hábito, te avisa con la salida de la versión mínima.
+> 📤 **Exporta/importa los datos del Coach** desde Héroe. · 🗣️ **Planes de idiomas** específicos (semana 1 = abrir la app y 1 ejercicio).
 
 ---
 

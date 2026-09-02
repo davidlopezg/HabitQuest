@@ -129,12 +129,20 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
 
   const behaviors: Behavior[] = preset.starters.map((templateId, i) => {
     const t = templateOf(templateId)!;
+    const text = raw.toLowerCase();
+    // Plan específico de idiomas: el comportamiento se llama igual que el idioma
+    // (ej: "Quiero aprender inglés" → hábito "Estudiar inglés").
+    const isLearningLanguage = preset.area === 'learning' && LANGUAGE_WORDS.some((w) => text.includes(w));
+    const langWord = LANGUAGE_WORDS.find((w) => text.includes(w));
+    const name = isLearningLanguage && langWord
+      ? `Estudiar ${langWord.charAt(0).toUpperCase() + langWord.slice(1)}`
+      : t.name;
     return {
       id: `${goalId}__${templateId}`,
       goalId,
       templateId,
-      name: t.name,
-      icon: t.icon,
+      name,
+      icon: isLearningLanguage && langWord ? '📱' : t.icon,
       category: t.category,
       enabled: true,
       order: i,
@@ -147,10 +155,16 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
   const starterNames = behaviors.map((b) => b.name.toLowerCase());
   const pipelineNames = preset.pipeline.map((id) => templateOf(id)!.name);
   const first = starterNames[0] ?? 'el primer hábito';
-  const message =
+  let message =
     preset.area === 'other'
       ? `Vamos a descomponer tu objetivo en pasos pequeños. Empezaremos con ${first}.`
       : `Objetivo: ${goal.title}. Empezaremos ${first === 'caminar' ? 'caminando' : 'con ' + first}. Cuando ese comportamiento esté consolidado introduciremos el siguiente.`;
+  // Primer plan concreto para idiomas (estilo Duolingo): una semana ridículamente fácil.
+  if (preset.area === 'learning' && LANGUAGE_WORDS.some((w) => raw.toLowerCase().includes(w))) {
+    message +=
+      '\n\nPlan de la primera semana: solo abre la app o el material y completa 1 ejercicio al día. ' +
+      'Sin más. Cuando se consolide subiremos a 5 minutos y así hasta llegar a 30.';
+  }
 
   return { goal, behaviors, pipelineNames, message };
 }

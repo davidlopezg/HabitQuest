@@ -189,7 +189,10 @@ a 10 min.
 | 5 | Notificaciones contextuales (SW + Notification API, aviso por hábito) | ✅ hecho |
 | 6 | Migración v1→v2 (suma XP/historia) + misiones manuales dentro del día del coach | ✅ hecho |
 | 6b | Hasta 3 objetivos por fases (selector, añadir, plan unificado con etiquetas) | ✅ hecho |
-| 7 | Pulido UX, tests E2E de flujos, deploy | pendiente |
+| 7 | Pulido UX (tema claro, micro-interacciones, reduced-motion, cierres calmados) | ✅ hecho |
+| 7b | Insights visibles (pantalla + tarjeta del día) | ✅ hecho |
+| 8 | Export/import datos del Coach · planes de idiomas | ✅ hecho |
+| 9 | Push reales con la app cerrada (FCM + Worker cron) — pendiente de config Firebase/KV | 🧩 código listo |
 
 ## 12. Riesgos técnicos
 

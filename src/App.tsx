@@ -422,6 +422,39 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // --- Datos del Coach (v2, storage independiente) ---
+  const exportCoach = () => {
+    const data = localStorage.getItem('habitquest_coach');
+    const blob = new Blob([data ?? '{}'], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `HabitQuest_Coach_${today}.json`;
+    a.click();
+  };
+  const importCoach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (typeof data !== 'object' || !data || !Array.isArray(data.behaviors)) throw new Error('formato');
+        localStorage.setItem('habitquest_coach', JSON.stringify(data));
+        alert('Datos del Coach importados. Recargando…');
+        window.location.reload();
+      } catch {
+        alert('Archivo de Coach inválido');
+      }
+    };
+    reader.readAsText(file);
+  };
+  const resetCoach = () => {
+    if (!confirm('¿Borrar TODOS los datos del Coach (objetivos, hábitos, historial y chat)? No afecta al modo manual de Inicio.')) return;
+    localStorage.removeItem('habitquest_coach');
+    localStorage.removeItem('habitquest_migrated');
+    window.location.reload();
+  };
+
   const resetAll = () => {
     setUserData(prev => ({
       ...prev,
@@ -850,6 +883,30 @@ export default function App() {
         </div>
       </div>
       
+      <div className="rpg-card p-1">
+        <div className="px-4 pt-4 pb-2">
+          <p className="font-bold">🧠 Datos del Coach</p>
+          <p className="text-[10px] text-rpg-text-secondary">Objetivos, hábitos, historial y chat (independiente del modo manual)</p>
+        </div>
+        <div className="flex items-center justify-between p-4 pt-2">
+          <div className="flex items-center gap-3"><Download size={18} className="text-cyan-400" /><span className="text-sm">Exportar Coach</span></div>
+          <button onClick={exportCoach} className="px-4 py-2 rounded-lg bg-white/10 text-sm">Exportar</button>
+        </div>
+        <div className="h-px bg-white/5 mx-4" />
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3"><Upload size={18} className="text-green-400" /><span className="text-sm">Importar Coach</span></div>
+          <label className="px-4 py-2 rounded-lg bg-white/10 text-sm cursor-pointer">
+            Importar
+            <input type="file" className="hidden" onChange={importCoach} accept=".json" />
+          </label>
+        </div>
+        <div className="h-px bg-white/5 mx-4" />
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3"><RefreshCw size={18} className="text-red-400" /><span className="text-sm">Reiniciar Coach</span></div>
+          <button onClick={resetCoach} className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm">Reiniciar</button>
+        </div>
+      </div>
+
       <div className="rpg-card p-1">
         <div className="flex items-center justify-between p-4">
           <span className="font-bold">Gestionar Hábitos</span>

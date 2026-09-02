@@ -376,6 +376,15 @@ test('adherencia y racha: excused no rompe la racha pero no cuenta como éxito p
   assert.equal(streakDays(state.logs, b, addDays(end, 2)), 0);
 });
 
+test('decompose: "Quiero aprender inglés" genera plan de idioma específico', () => {
+  const d = decompose('Quiero aprender inglés', '2025-06-01');
+  assert.equal(d.goal.area, 'learning');
+  assert.equal(d.behaviors[0].name, 'Estudiar Inglés');
+  assert.equal(d.behaviors[0].icon, '📱');
+  assert.ok(d.message.includes('primera semana'));
+  assert.equal(resolveLevels(d.behaviors[0])[6].minutes, 30);
+});
+
 test('tiempo: toHHMM correcto', () => {
   assert.equal(toHHMM(540), '09:00');
   assert.equal(toHHMM(780), '13:00');

@@ -51,6 +51,7 @@ import {
 } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
+import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
 const EXAMPLES = [
@@ -252,7 +253,24 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     } catch {
       /* ignore */
     }
+    // Push reales (app cerrada): registrar token FCM si está configurado.
+    if (next && notifState === 'granted' && pushAvailable()) {
+      const r = await setupPush();
+      if (r === 'ok') {
+        setNotice({
+          icon: '🔔',
+          text: 'Avisos push activados: llegarán incluso con la app cerrada.',
+        });
+      } else if (r === 'denied') {
+        setNotifState('denied');
+      }
+    }
   }
+
+  // Sincroniza el plan con el Worker de push (fire-and-forget; sin config = no-op).
+  useEffect(() => {
+    void syncPlanPush(plan ?? null);
+  }, [plan]);
 
   /** Recordatorio único por elemento del plan cuando llega (o ha pasado poco de) su hora. */
   function maybeRemind() {
