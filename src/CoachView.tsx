@@ -26,6 +26,7 @@ import type {
 import {
   addDays,
   adherence,
+  analyzePatterns,
   applyDecomposed,
   CATALOG,
   classifyReason,
@@ -36,6 +37,8 @@ import {
   getOrBuildPlan,
   handleCannot,
   levelDef,
+  REASON_LABEL,
+  reasonDistribution,
   recommendLevel,
   rebuildPlan,
   recordCompletion,
@@ -159,6 +162,8 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   const [addGoalOpen, setAddGoalOpen] = useState(false);
   const [newGoalText, setNewGoalText] = useState('');
   const [detailGoalId, setDetailGoalId] = useState<string | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightDismissed, setInsightDismissed] = useState(false);
   // --- Notificaciones (recordatorios contextuales) ---
   const [remindEnabled, setRemindEnabled] = useState(() => {
     try {
@@ -200,6 +205,20 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   );
   const anyConsolidated = allBehaviors.some((b) => cs.counters.consolidated.includes(b.id));
   const detailGoal = activeGoals.find((g) => g.id === detailGoalId) ?? null;
+
+  // Insights deterministas del coach (se actualizan con cada día de uso).
+  const insightsNow = useMemo(() => analyzePatterns(cs, { sinceDays: 28 }), [cs]);
+  const insightCard = insightsNow[0] ?? null;
+  const insightSeenDate = (() => {
+    try {
+      return localStorage.getItem('habitquest_insight_seen') ?? '';
+    } catch {
+      return '';
+    }
+  })();
+  const showInsightCard =
+    !insightDismissed && !!insightCard && insightSeenDate !== today && cs.logs.length >= 5;
+
 
   const phase: 'onboarding' | 'checkin' | 'plan' =
     activeGoals.length === 0 ? 'onboarding' : !checkinToday ? 'checkin' : 'plan';
@@ -531,14 +550,51 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
           >
             {remindEnabled ? '🔔 Avisos activados' : '🔕 Avisos desactivados'}
           </button>
-          {notifState === 'denied' && (
-            <span className="text-[10px] text-amber-400/90">permiso denegado en el navegador</span>
-          )}
-          {notifState === 'unsupported' && (
-            <span className="text-[10px] text-rpg-text-secondary">este navegador no permite avisos nativos</span>
-          )}
+          <button
+            onClick={() => setInsightsOpen(true)}
+            className="text-[11px] px-3 py-1.5 rounded-full font-semibold bg-white/5 text-rpg-text-secondary"
+          >
+            🧠 Insights
+          </button>
         </div>
+        {(notifState === 'denied' || notifState === 'unsupported') && (
+          <p className="mt-1.5 text-[10px] text-rpg-text-secondary">
+            {notifState === 'denied'
+              ? 'permiso de avisos denegado en el navegador'
+              : 'este navegador no permite avisos nativos (verás el aviso dentro de la app)'}
+          </p>
+        )}
       </header>
+
+      {/* Insight del día (auto) */}
+      {showInsightCard && insightCard && (
+        <section className="rpg-card p-4 border-l-4 border-l-amber-400 relative">
+          <button
+            onClick={() => {
+              setInsightDismissed(true);
+              try {
+                localStorage.setItem('habitquest_insight_seen', today);
+              } catch {
+                /* ignore */
+              }
+            }}
+            className="absolute top-2 right-2 text-rpg-text-secondary text-xs px-1"
+            aria-label="Ocultar insight"
+          >
+            ✕
+          </button>
+          <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">
+            🧠 Lo que observo
+          </p>
+          <p className="text-xs text-rpg-text-secondary leading-relaxed pr-4">{insightCard.message}</p>
+          <button
+            onClick={() => setInsightsOpen(true)}
+            className="mt-2 text-[11px] font-semibold text-cyan-300"
+          >
+            Ver todo lo aprendido →
+          </button>
+        </section>
+      )}
 
       {/* Tus objetivos — acceso a las fases de cada uno */}
       <section className="rpg-card p-4">
@@ -702,6 +758,22 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
                 (b) => b.goalId === detailGoal.id && cs.counters.consolidated.includes(b.id),
               )
             }
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Insights: lo que el coach ha aprendido */}
+      <AnimatePresence>
+        {insightsOpen && (
+          <InsightsOverlay
+            state={cs}
+            behaviors={allBehaviors}
+            today={today}
+            onClose={() => setInsightsOpen(false)}
+            onAskChat={() => {
+              setInsightsOpen(false);
+              setChatOpen(true);
+            }}
           />
         )}
       </AnimatePresence>
@@ -1545,6 +1617,203 @@ function GoalDetailOverlay({
           <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
             La dificultad sube y baja sola según tu adherencia real.
           </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ---------- Insights: lo que el coach ha aprendido de ti ----------
+
+const INSIGHT_ICON: Record<string, string> = {
+  schedule_change: '🕐',
+  reason_pattern: '🔁',
+  sleep_relation: '😴',
+};
+
+interface InsightsProps {
+  state: CoachState;
+  behaviors: Behavior[];
+  today: string;
+  onClose: () => void;
+  onAskChat: () => void;
+}
+
+function InsightsOverlay({ state, behaviors, today, onClose, onAskChat }: InsightsProps) {
+  const insights = analyzePatterns(state, { sinceDays: 28 });
+  const days = new Set(state.logs.map((l) => l.date)).size;
+  const reasons = reasonDistribution(state.logs, today, 30);
+  const topReasons = Object.entries(reasons)
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, n]) => n >= 2)
+    .slice(0, 3);
+  const consolidatedNames = state.counters.consolidated
+    .map((id) => state.behaviors.find((b) => b.id === id)?.name)
+    .filter(Boolean);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[112] bg-black/85 flex items-end sm:items-center justify-center"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="rpg-card w-full max-w-lg max-h-[90vh] flex flex-col"
+      >
+        <div className="p-5 pb-3 border-b border-white/10">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">🧠 Coach</p>
+              <h2 className="font-heading font-bold text-2xl mt-0.5">Lo que he aprendido de ti</h2>
+              <p className="text-xs text-rpg-text-secondary mt-1">
+                {days > 0 ? `${days} días de historia · se actualiza con cada día de uso` : 'Aún estoy conociéndote'}
+              </p>
+            </div>
+            <button onClick={onClose} className="p-2 text-rpg-text-secondary shrink-0">
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {days < 3 && (
+            <div className="rpg-card p-4 bg-black/20 text-center">
+              <div className="text-3xl mb-2">🔭</div>
+              <p className="text-sm text-rpg-text-secondary leading-relaxed">
+                Todavía tengo pocos datos. Los patrones aparecen a partir de ~7 días reales
+                (check-in + completar hábitos). Lo que ya puedo medir está abajo.
+              </p>
+            </div>
+          )}
+
+          {/* Métricas generales */}
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="bg-white/5 rounded-xl py-2">
+              <p className="text-base font-bold">{state.counters.totalDone}</p>
+              <p className="text-[9px] text-rpg-text-secondary uppercase">hechos</p>
+            </div>
+            <div className="bg-white/5 rounded-xl py-2">
+              <p className="text-base font-bold text-amber-400">⭐{state.counters.resilienceWins}</p>
+              <p className="text-[9px] text-rpg-text-secondary uppercase">resiliencia</p>
+            </div>
+            <div className="bg-white/5 rounded-xl py-2">
+              <p className="text-base font-bold text-green-400">{consolidatedNames.length}</p>
+              <p className="text-[9px] text-rpg-text-secondary uppercase">consolidados</p>
+            </div>
+            <div className="bg-white/5 rounded-xl py-2">
+              <p className="text-base font-bold">{state.counters.replans}</p>
+              <p className="text-[9px] text-rpg-text-secondary uppercase">replanes</p>
+            </div>
+          </div>
+
+          {/* Adherencia por hábito */}
+          {behaviors.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-2">Adherencia real</p>
+              <div className="space-y-2">
+                {behaviors.map((b) => {
+                  const a7 = Math.round(adherence(state.logs, b, today, 7).rate * 100);
+                  const a30 = Math.round(adherence(state.logs, b, today, 30).rate * 100);
+                  const st = streakDays(state.logs, b, today);
+                  const consolidated = state.counters.consolidated.includes(b.id);
+                  return (
+                    <div key={b.id} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2">
+                      <span className="text-xl">{b.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold truncate">
+                          {b.name}
+                          {consolidated && <span className="ml-1 text-[9px] text-green-300">🌱</span>}
+                        </p>
+                        <div className="w-full h-1.5 bg-black/30 rounded-full mt-1 overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.max(2, Math.min(100, a30))}%`,
+                              background: a30 >= 60 ? 'linear-gradient(90deg,#22d3ee,#34d399)' : a30 >= 35 ? '#fbbf24' : '#f87171',
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] text-orange-400 font-semibold">🔥{st}</p>
+                        <p className="text-[10px] text-cyan-400 font-semibold">7d {a7}%</p>
+                        <p className="text-[9px] text-rpg-text-secondary">30d {a30}%</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Patrones detectados */}
+          {insights.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-2">
+                Patrones detectados
+              </p>
+              <div className="space-y-2">
+                {insights.map((ins, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-white/5 rounded-xl px-3 py-2.5">
+                    <span className="text-lg">{INSIGHT_ICON[ins.type] ?? '🔎'}</span>
+                    <p className="text-xs text-rpg-text-secondary leading-relaxed">{ins.message}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {insights.length === 0 && days >= 3 && (
+            <p className="text-xs text-rpg-text-secondary leading-relaxed">
+              De momento no detecto patrones claros ni obstáculos repetidos: buena señal.
+              Seguiré observando horarios, motivos de "no puedo" y días de la semana.
+            </p>
+          )}
+
+          {/* Obstáculos repetidos */}
+          {topReasons.length > 0 && (
+            <div className="rpg-card p-4 bg-black/20">
+              <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-2">
+                Obstáculos que más se repiten
+              </p>
+              <div className="space-y-1.5">
+                {topReasons.map(([code, n]) => (
+                  <div key={code} className="flex items-center gap-2 text-xs">
+                    <span>🔁</span>
+                    <span className="flex-1">{REASON_LABEL[code as keyof typeof REASON_LABEL] ?? code}</span>
+                    <span className="text-rpg-text-secondary">{n} veces</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {consolidatedNames.length > 0 && (
+            <div className="rpg-card p-4 bg-black/20">
+              <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">
+                Hábitos consolidados
+              </p>
+              <p className="text-xs leading-relaxed">
+                {consolidatedNames.join(' · ')} ya aguantan solos: la dificultad puede subir o toca
+                introducir el siguiente paso.
+              </p>
+            </div>
+          )}
+
+          <p className="text-center text-[10px] text-rpg-text-secondary pb-1">
+            Observaciones con lenguaje cauto: correlación ≠ causa. Para profundizar, pregunta en el chat.
+          </p>
+          <button
+            onClick={onAskChat}
+            className="w-full py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl text-sm font-bold"
+          >
+            💬 Preguntarle al coach por esto
+          </button>
         </div>
       </motion.div>
     </motion.div>
