@@ -83,6 +83,22 @@ function nowMin(): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** Etiqueta de tiempo relativa y calmada para el plan. */
+function relTimeLabel(start: number, now: number): string {
+  const diff = start - now;
+  if (diff >= 0) {
+    if (diff === 0) return 'ahora';
+    if (diff < 60) return `en ${diff} min`;
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    if (h < 3) return m > 0 ? `en ${h} h ${m}` : `en ${h} h`;
+    return ''; // muy lejano: sin ruido
+  }
+  const past = -diff;
+  if (past < 75) return 'ahora';
+  return `hace ${Math.floor(past / 60)} h`;
+}
+
 /** Cierra días anteriores: los pendientes sin resolver se registran como 'miss'. */
 function closePreviousDays(state: CoachState, today: string): CoachState {
   let changed = false;
@@ -777,6 +793,8 @@ function PlanBody(props: PlanBodyProps) {
   const rest = pending.filter((i) => i.id !== nowItem?.id);
   const doneCount = props.doneToday.done;
   const total = props.doneToday.total;
+  const nowRel = nowItem ? relTimeLabel(nowItem.startMinute, now) : '';
+  const allClear = doneCount > 0 && pending.length === 0;
 
   const iconOf = (behaviorId: string) =>
     behaviors.find((b) => b.id === behaviorId)?.icon ?? '✨';
@@ -800,9 +818,14 @@ function PlanBody(props: PlanBodyProps) {
                   {nowItem.label}
                   {goalTag(nowItem.goalId)}
                 </h3>
-                <p className="text-xs text-rpg-text-secondary mt-0.5">
-                  <Clock size={11} className="inline mr-1" />
+                <p className="text-xs text-rpg-text-secondary mt-0.5 flex items-center gap-1.5">
+                  <Clock size={11} className="inline" />
                   {toHHMM(nowItem.startMinute)}
+                  {nowRel && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 font-semibold">
+                      {nowRel}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -885,6 +908,25 @@ function PlanBody(props: PlanBodyProps) {
         </section>
       )}
 
+      {/* Día completo: cierre calmado */}
+      {allClear && (
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rpg-card p-5 text-center border-l-4 border-l-green-400"
+        >
+          <div className="text-3xl mb-1">🌿</div>
+          <p className="font-heading font-bold">
+            {doneCount === total ? 'Día completo' : 'Día resuelto'}
+          </p>
+          <p className="text-xs text-rpg-text-secondary mt-1 leading-relaxed">
+            {doneCount === total
+              ? 'Todo lo previsto está hecho. Mañana el plan se adaptará a cómo estés.'
+              : `${doneCount} de ${total} hechos y el resto gestionado sin drama. La constancia gana.`}
+          </p>
+        </motion.section>
+      )}
+
       {/* Misiones manuales (modo libre) integradas en el día */}
       {manualMissions && manualMissions.items.length > 0 && (
         <section className="rpg-card p-4">
@@ -931,9 +973,13 @@ interface ItemActionsProps {
 function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compact }: ItemActionsProps) {
   if (compact && !open) {
     return (
-      <button onClick={onToggle} className="text-[11px] bg-white/5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap">
+      <motion.button
+        whileTap={{ scale: 0.94 }}
+        onClick={onToggle}
+        className="text-[11px] bg-white/5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap"
+      >
         EMPEZAR
-      </button>
+      </motion.button>
     );
   }
   const def = behavior ? levelDef(behavior) : undefined;
@@ -944,42 +990,47 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
     <div className={open ? 'mt-3' : ''}>
       {!open && (
         <div className="flex gap-2">
-          <button
+          <motion.button
+            whileTap={{ scale: 0.96 }}
             onClick={onToggle}
             className="flex-1 py-2.5 rpg-gradient rounded-xl font-bold text-white text-sm"
           >
             EMPEZAR
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.94 }}
             onClick={onCannot}
             className="py-2.5 px-3 bg-white/5 rounded-xl text-sm font-semibold text-rpg-text-secondary"
           >
             NO PUEDO
-          </button>
+          </motion.button>
         </div>
       )}
       {open && (
         <div className="grid gap-2">
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
             onClick={() => onFinish(item, item.minutes)}
             className="py-2.5 bg-green-500/20 text-green-300 rounded-xl font-semibold text-sm"
           >
             ✅ Lo he hecho · {item.minutes} min
-          </button>
+          </motion.button>
           {canMinimal && (
-            <button
+            <motion.button
+              whileTap={{ scale: 0.97 }}
               onClick={() => onFinish(item, minimal)}
               className="py-2.5 bg-amber-500/15 text-amber-300 rounded-xl font-semibold text-sm"
             >
               ⏱️ Solo el mínimo · {minimal} min
-            </button>
+            </motion.button>
           )}
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
             onClick={onCannot}
             className="py-2.5 bg-white/5 text-rpg-text-secondary rounded-xl font-semibold text-sm"
           >
             🙅 No puedo (explico por qué)
-          </button>
+          </motion.button>
           <button onClick={onToggle} className="py-1.5 text-[11px] text-rpg-text-secondary">
             cerrar
           </button>

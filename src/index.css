@@ -136,3 +136,48 @@ html[data-theme="light"] div[class*="rounded-full"][class*="bg-black"] {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ---- Tema claro: adaptar componentes del Coach (2026) ---- */
+html[data-theme="light"] [class*="text-cyan-"] {
+  color: #0c7a97 !important;
+}
+html[data-theme="light"] [class*="text-green-3"],
+html[data-theme="light"] [class*="text-emerald-"] {
+  color: #15803d !important;
+}
+html[data-theme="light"] [class*="text-amber-"] {
+  color: #b45309 !important;
+}
+html[data-theme="light"] [class*="text-orange-"] {
+  color: #c2410c !important;
+}
+html[data-theme="light"] [class*="text-red-"] {
+  color: #b91c1c !important;
+}
+html[data-theme="light"] [class*="bg-cyan-500/"] {
+  background-color: rgba(8, 145, 178, 0.14) !important;
+}
+html[data-theme="light"] [class*="bg-green-500/"] {
+  background-color: rgba(22, 163, 74, 0.14) !important;
+}
+html[data-theme="light"] [class*="bg-amber-500/"] {
+  background-color: rgba(217, 119, 6, 0.14) !important;
+}
+html[data-theme="light"] [class*="bg-white/"] {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+}
+html[data-theme="light"] [class*="bg-black/"] {
+  background-color: rgba(226, 232, 240, 0.55) !important;
+}
+html[data-theme="light"] [class*="ring-cyan-"] {
+  --tw-ring-color: rgba(8, 145, 178, 0.45) !important;
+}
+
+/* Respetar usuarios con movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
