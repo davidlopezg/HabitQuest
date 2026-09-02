@@ -7,6 +7,7 @@
 > El motor determinista vive en [`src/engine/`](src/engine) y está verificado con tests: `npm test`.
 >
 > ✨ **Tab Coach**: escribe tu objetivo → check-in matutino de 20 s → plan del día que se adapta (AHORA / PRÓXIMO / HOY) con botones EMPEZAR / NO PUEDO / versión mínima.
+> 🎯 **Hasta 3 objetivos** en curso, cada uno con su cola de hábitos; el plan del día reparte tiempo entre todos según tu energía.
 >
 > 🤖 **Chat con coach IA (MiniMax)**: habla con el coach, que replanifica tu día de verdad.
 > 🔔 **Avisos inteligentes**: cuando llega la hora de un hábito, te avisa con la salida de la versión mínima.

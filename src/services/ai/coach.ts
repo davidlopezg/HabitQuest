@@ -37,24 +37,26 @@ export interface ChatCtx {
 /** Resumen del estado del usuario que el LLM recibe como contexto. */
 export function summarizeState(state: CoachState, date: string): string {
   const lines: string[] = [];
-  const goal = state.goals[0];
-  if (!goal) {
+  const activeGoals = state.goals.filter((g) => g.status === 'active');
+  if (activeGoals.length === 0) {
     lines.push('El usuario aún no tiene objetivo. Debe empezar escribiendo qué quiere conseguir.');
     return lines.join('\n');
   }
-  lines.push(`Objetivo: "${goal.title}" (dicho por el usuario: "${goal.raw}"). Área: ${goal.area}.`);
-  if (goal.pipeline.length > 0) {
-    lines.push(`Comportamientos en espera (no introducir aún): ${goal.pipeline.join(', ')}.`);
-  }
-  const bList = state.behaviors.filter((b) => b.enabled && b.goalId === goal.id);
-  for (const b of bList) {
-    const def = levelDef(b);
-    const a7 = adherence(state.logs, b, date, 7);
-    lines.push(
-      `Hábito "${b.name}" (${b.icon}): nivel ${b.currentLevel}, objetivo ${def?.minutes ?? '?'} min, ` +
-        `versión mínima ${def?.minimal ?? 1} min. Adherencia 7d: ${Math.round(a7.rate * 100)}%. ` +
-        `Consolidado: ${state.counters.consolidated.includes(b.id) ? 'sí' : 'no'}.`,
-    );
+  for (const goal of activeGoals.slice(0, 3)) {
+    lines.push(`Objetivo: "${goal.title}" (dicho por el usuario: "${goal.raw}"). Área: ${goal.area}.`);
+    if (goal.pipeline.length > 0) {
+      lines.push(`  En espera para este objetivo (no introducir aún): ${goal.pipeline.join(', ')}.`);
+    }
+    const bList = state.behaviors.filter((b) => b.enabled && b.goalId === goal.id);
+    for (const b of bList) {
+      const def = levelDef(b);
+      const a7 = adherence(state.logs, b, date, 7);
+      lines.push(
+        `Hábito "${b.name}" (${b.icon}, objetivo "${goal.title}"): nivel ${b.currentLevel}, ` +
+          `objetivo ${def?.minutes ?? '?'} min, versión mínima ${def?.minimal ?? 1} min. ` +
+          `Adherencia 7d: ${Math.round(a7.rate * 100)}%. Consolidado: ${state.counters.consolidated.includes(b.id) ? 'sí' : 'no'}.`,
+      );
+    }
   }
   const plan = state.plans[date];
   const weekday = WEEKDAY_ES[weekdayOf(date)];

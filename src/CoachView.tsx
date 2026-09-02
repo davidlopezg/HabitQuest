@@ -17,6 +17,7 @@ import type {
   DayCheckIn,
   DayIntention,
   DayMode,
+  Goal,
   PlanItem,
   TimeAvailable,
 } from './engine/index.ts';
@@ -32,6 +33,7 @@ import {
   handleCannot,
   levelDef,
   recommendLevel,
+  rebuildPlan,
   recordCompletion,
   streakDays,
   todayKey,
@@ -133,6 +135,9 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   const [cannotText, setCannotText] = useState('');
   const [showIntro, setShowIntro] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [addGoalOpen, setAddGoalOpen] = useState(false);
+  const [newGoalText, setNewGoalText] = useState('');
   // --- Notificaciones (recordatorios contextuales) ---
   const [remindEnabled, setRemindEnabled] = useState(() => {
     try {
@@ -164,20 +169,23 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     return () => clearTimeout(t);
   }, [notice]);
 
-  const goal = cs.goals[0];
+  const activeGoals = cs.goals.filter((g) => g.status === 'active');
   const checkinToday = cs.checkins.find((c) => c.date === today);
   const plan = cs.plans[today];
 
-  const phase: 'onboarding' | 'checkin' | 'plan' = !goal
-    ? 'onboarding'
-    : !checkinToday
-      ? 'checkin'
-      : 'plan';
-
-  const behaviors = useMemo(
-    () => cs.behaviors.filter((b) => b.enabled && b.goalId === goal?.id),
-    [cs.behaviors, goal],
+  const selectedGoal =
+    activeGoals.find((g) => g.id === selectedGoalId) ?? activeGoals[0];
+  const allBehaviors = useMemo(
+    () => cs.behaviors.filter((b) => b.enabled && activeGoals.some((g) => g.id === b.goalId)),
+    [cs.behaviors, activeGoals],
   );
+  const selectedBehaviors = selectedGoal
+    ? allBehaviors.filter((b) => b.goalId === selectedGoal.id)
+    : [];
+  const anyConsolidated = allBehaviors.some((b) => cs.counters.consolidated.includes(b.id));
+
+  const phase: 'onboarding' | 'checkin' | 'plan' =
+    activeGoals.length === 0 ? 'onboarding' : !checkinToday ? 'checkin' : 'plan';
 
   const xp = cs.counters.xp ?? 0;
   const coachLevel = Math.floor(xp / 100) + 1;
@@ -233,7 +241,7 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
         } catch {
           /* ignore */
         }
-        const b = behaviors.find((x) => x.id === it.behaviorId);
+        const b = allBehaviors.find((x) => x.id === it.behaviorId);
         const def = b ? levelDef(b) : undefined;
         const shortLabel = it.label.replace(/\s*\(mínimo\)/, '');
         const body =
@@ -301,6 +309,25 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     setCs(next);
     setShowIntro(true);
     setNotice({ icon, text: msg });
+  }
+
+  /** Añade un objetivo adicional (máx. 3) y replanifica el día de hoy conservando lo hecho. */
+  function addGoal(raw: string) {
+    const text = raw.trim();
+    if (!text || activeGoals.length >= 3) return;
+    const outcome = decompose(text, today);
+    let next = applyDecomposed(cs, outcome);
+    if (checkinToday) {
+      next = rebuildPlan(next, checkinToday);
+    }
+    setCs(next);
+    setSelectedGoalId(outcome.goal.id);
+    setAddGoalOpen(false);
+    setNewGoalText('');
+    const advice = !anyConsolidated
+      ? '\n\nConsejo: si es pronto, consolida el primer objetivo antes de dividir tu atención (puedes tener hasta 3).'
+      : '';
+    setNotice({ icon: '🎯', text: outcome.message + advice });
   }
 
   function submitCheckin(c: DayCheckIn) {
@@ -390,37 +417,35 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   }
 
   function introduceNextBehavior() {
-    if (!goal || goal.pipeline.length === 0) return;
-    const tplId = goal.pipeline[0];
+    if (!selectedGoal || selectedGoal.pipeline.length === 0) return;
+    const tplId = selectedGoal.pipeline[0];
     const t = CATALOG.find((x) => x.id === tplId);
     if (!t) return;
     const newB: Behavior = {
-      id: `${goal.id}__${tplId}`,
-      goalId: goal.id,
+      id: `${selectedGoal.id}__${tplId}`,
+      goalId: selectedGoal.id,
       templateId: t.id,
       name: t.name,
       icon: t.icon,
       category: t.category,
       enabled: true,
-      order: cs.behaviors.filter((b) => b.goalId === goal.id).length,
+      order: cs.behaviors.filter((b) => b.goalId === selectedGoal.id).length,
       introducedAt: today,
       currentLevel: 1,
       preferredSlots: t.slots,
     };
-    const next: CoachState = {
+    let next: CoachState = {
       ...cs,
       behaviors: [...cs.behaviors, newB],
       goals: cs.goals.map((g) =>
-        g.id === goal.id ? { ...g, pipeline: g.pipeline.slice(1) } : g,
+        g.id === selectedGoal.id ? { ...g, pipeline: g.pipeline.slice(1) } : g,
       ),
     };
-    // Replanificar hoy con el nuevo hábito si ya hay check-in.
+    // Replanificar hoy conservando lo ya hecho si hay check-in.
     if (checkinToday) {
-      const { state } = getOrBuildPlan(next, checkinToday);
-      setCs(state);
-    } else {
-      setCs(next);
+      next = rebuildPlan(next, checkinToday);
     }
+    setCs(next);
     setNotice({ icon: '🌱', text: `Nuevo hábito: ${t.name}. Nivel 1 — objetivo mínimo. Sin prisa.` });
   }
 
@@ -441,9 +466,8 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
   if (phase === 'checkin') {
     return (
       <CheckinScreen
-        goalTitle={goal!.title}
-        raw={goal!.raw}
-        behaviors={behaviors}
+        goals={activeGoals}
+        behaviors={allBehaviors}
         showIntro={showIntro}
         onSubmitted={submitCheckin}
       />
@@ -461,7 +485,11 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
             <p className="text-[11px] uppercase tracking-wider text-rpg-text-secondary">
               {WEEKDAY_ES[weekdayOf(today)]} · {today.split('-').reverse().join('/')}
             </p>
-            <h1 className="font-heading font-bold text-xl">{goal!.title}</h1>
+            {activeGoals.length === 1 ? (
+              <h1 className="font-heading font-bold text-xl">{selectedGoal?.title}</h1>
+            ) : (
+              <h1 className="font-heading font-bold text-xl">Tus objetivos</h1>
+            )}
           </div>
           <div className="flex gap-2">
             <span className="bg-black/30 px-2.5 py-1 rounded-full text-[11px] font-bold">
@@ -472,21 +500,57 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
             </span>
           </div>
         </div>
+
+        {/* Selector de objetivos (hasta 3) */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {activeGoals.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => setSelectedGoalId(g.id)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition ${
+                selectedGoal?.id === g.id
+                  ? 'bg-cyan-500/25 text-cyan-200 ring-1 ring-cyan-400/60'
+                  : 'bg-white/5 text-rpg-text-secondary'
+              }`}
+            >
+              🎯 {g.title}
+            </button>
+          ))}
+          {activeGoals.length < 3 && (
+            <button
+              onClick={() => setAddGoalOpen(true)}
+              className="px-3 py-1.5 rounded-full text-[11px] font-semibold text-cyan-300 bg-white/5 border border-dashed border-cyan-400/50"
+            >
+              ＋ Añadir objetivo
+            </button>
+          )}
+        </div>
+
         {plan && (
           <p className="mt-3 text-sm font-semibold rpg-gradient-text">{plan.headline}</p>
         )}
         {plan?.coachNote && <p className="mt-2 text-xs text-rpg-text-secondary leading-relaxed">{plan.coachNote}</p>}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {behaviors.map((b) => {
-            const def = levelDef(b);
-            return (
-              <span key={b.id} className="text-[11px] bg-white/5 px-2.5 py-1 rounded-full">
-                {b.icon} {b.name} · Nv {b.currentLevel}
-                {def ? ` (${def.minutes} min)` : ''}
+
+        {/* Hábitos del objetivo seleccionado */}
+        {selectedBehaviors.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedBehaviors.map((b) => {
+              const def = levelDef(b);
+              return (
+                <span key={b.id} className="text-[11px] bg-white/5 px-2.5 py-1 rounded-full">
+                  {b.icon} {b.name} · Nv {b.currentLevel}
+                  {def ? ` (${def.minutes} min)` : ''}
+                </span>
+              );
+            })}
+            {selectedGoal && selectedGoal.pipeline.length > 0 && (
+              <span className="text-[11px] bg-white/5 px-2.5 py-1 rounded-full opacity-70">
+                +{selectedGoal.pipeline.length} en cola
               </span>
-            );
-          })}
-        </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
             onClick={() => void enableReminders()}
@@ -505,17 +569,28 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
 
       <PlanBody
         plan={plan}
-        behaviors={behaviors}
+        behaviors={allBehaviors}
+        goalTitleOf={
+          activeGoals.length > 1
+            ? (id: string) => activeGoals.find((g) => g.id === id)?.title
+            : undefined
+        }
         now={nowMin()}
         doneToday={countDone(plan)}
         openItem={openItem}
         setOpenItem={setOpenItem}
         onFinish={finishItem}
         onCannot={setCannotItem}
-        streakMax={Math.max(0, ...behaviors.map((b) => streakDays(cs.logs, b, today)))}
+        streakMax={Math.max(0, ...allBehaviors.map((b) => streakDays(cs.logs, b, today)))}
         xp={xp}
-        pipelineLength={goal!.pipeline.length}
-        onIntroduceNext={behaviors.some((b) => cs.counters.consolidated.includes(b.id)) ? introduceNextBehavior : undefined}
+        pipelineLength={selectedGoal?.pipeline.length ?? 0}
+        onIntroduceNext={
+          selectedGoal &&
+          selectedGoal.pipeline.length > 0 &&
+          selectedBehaviors.some((b) => cs.counters.consolidated.includes(b.id))
+            ? introduceNextBehavior
+            : undefined
+        }
         manualMissions={manualMissions}
       />
 
@@ -532,6 +607,66 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
               if (it) sendCannot(it);
             }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Modal añadir objetivo */}
+      <AnimatePresence>
+        {addGoalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setAddGoalOpen(false)}
+            className="fixed inset-0 z-[105] bg-black/80 flex items-center justify-center p-5"
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              onClick={(e) => e.stopPropagation()}
+              className="rpg-card p-5 w-full max-w-sm"
+            >
+              <h3 className="font-heading font-bold text-lg mb-1">🎯 Añadir objetivo</h3>
+              <p className="text-xs text-rpg-text-secondary mb-3">
+                ¿Qué más quieres conseguir? (hasta 3 objetivos en curso)
+              </p>
+              <textarea
+                autoFocus
+                value={newGoalText}
+                onChange={(e) => setNewGoalText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    addGoal(newGoalText);
+                  }
+                }}
+                placeholder="Ej: Quiero dormir mejor…"
+                rows={2}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 placeholder:text-rpg-text-secondary resize-none outline-none focus:border-cyan-400/50 text-sm"
+              />
+              {!anyConsolidated && (
+                <p className="mt-2 text-[10px] text-amber-400/90 leading-relaxed">
+                  💡 Aún no has consolidado ningún hábito. Puedes añadirlo, pero concentrarte en uno
+                  primero suele dar mejores resultados.
+                </p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setAddGoalOpen(false)}
+                  className="flex-1 py-2.5 bg-white/5 rounded-xl text-sm font-semibold text-rpg-text-secondary"
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={!newGoalText.trim()}
+                  onClick={() => addGoal(newGoalText)}
+                  className="flex-1 py-2.5 rpg-gradient rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                >
+                  Añadir
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -586,10 +721,19 @@ interface PlanBodyProps {
   pipelineLength: number;
   onIntroduceNext?: () => void;
   manualMissions?: ManualMissionsProps;
+  /** Solo con varios objetivos: devuelve el título del objetivo de un item. */
+  goalTitleOf?: (goalId: string) => string | undefined;
 }
 
 function PlanBody(props: PlanBodyProps) {
-  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot, manualMissions } = props;
+  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot, manualMissions, goalTitleOf } = props;
+  const goalTag = (goalId?: string) => {
+    if (!goalTitleOf || !goalId) return null;
+    const t = goalTitleOf(goalId);
+    return t ? (
+      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 font-semibold">{t}</span>
+    ) : null;
+  };
   if (!plan || plan.items.length === 0) {
     return (
       <section className="rpg-card p-6 text-center">
@@ -634,7 +778,10 @@ function PlanBody(props: PlanBodyProps) {
             <div className="flex items-center gap-3">
               <span className="text-4xl">{iconOf(nowItem.behaviorId)}</span>
               <div>
-                <h3 className="font-heading font-bold text-lg leading-tight">{nowItem.label}</h3>
+                <h3 className="font-heading font-bold text-lg leading-tight flex items-center gap-2">
+                  {nowItem.label}
+                  {goalTag(nowItem.goalId)}
+                </h3>
                 <p className="text-xs text-rpg-text-secondary mt-0.5">
                   <Clock size={11} className="inline mr-1" />
                   {toHHMM(nowItem.startMinute)}
@@ -664,7 +811,10 @@ function PlanBody(props: PlanBodyProps) {
               <span className={`w-2 h-2 rounded-full ${prioColor[it.priority]}`} />
               <span className="text-2xl">{iconOf(it.behaviorId)}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{it.label}</p>
+                <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                  {it.label}
+                  {goalTag(it.goalId)}
+                </p>
                 <p className="text-[10px] text-rpg-text-secondary">{toHHMM(it.startMinute)}</p>
               </div>
               <ItemActions
@@ -927,14 +1077,12 @@ const FEELINGS: { key: 'energy' | 'mood' | 'focus' | 'stress'; icon: string; lab
 ];
 
 function CheckinScreen({
-  goalTitle,
-  raw,
+  goals,
   behaviors,
   showIntro,
   onSubmitted,
 }: {
-  goalTitle: string;
-  raw: string;
+  goals: Goal[];
   behaviors: Behavior[];
   showIntro: boolean;
   onSubmitted: (c: DayCheckIn) => void;
@@ -964,17 +1112,20 @@ function CheckinScreen({
     <div className="space-y-5">
       {showIntro && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rpg-card p-5 border-l-4 border-l-cyan-400">
-          <p className="font-heading font-bold text-lg">Objetivo: {goalTitle}</p>
-          <p className="text-xs text-rpg-text-secondary mt-1 italic">“{raw}”</p>
+          <p className="font-heading font-bold text-lg">
+            {goals.length === 1 ? `Objetivo: ${goals[0].title}` : `Tus objetivos (${goals.length})`}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {behaviors.map((b) => (
               <span key={b.id} className="text-xs bg-white/5 px-3 py-1.5 rounded-full">
-                {b.icon} {b.name} · nivel 1
+                {b.icon} {b.name} · nivel {b.currentLevel}
               </span>
             ))}
           </div>
           <p className="mt-3 text-xs text-rpg-text-secondary leading-relaxed">
-            Solo empezamos con lo esencial. Cuando se consolide, añadiremos el siguiente paso.
+            {goals.length > 1
+              ? 'Cada objetivo avanza a su ritmo: el plan de hoy reparte tiempo entre todos según tu energía.'
+              : 'Solo empezamos con lo esencial. Cuando se consolide, añadiremos el siguiente paso.'}
           </p>
         </motion.div>
       )}

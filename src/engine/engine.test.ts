@@ -29,7 +29,7 @@ import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
 import { adherence, streakDays } from './history.ts';
-import { emptyState } from './index.ts';
+import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion } from './index.ts';
 
 // ---------- helpers ----------
 
@@ -379,4 +379,24 @@ test('adherencia y racha: excused no rompe la racha pero no cuenta como éxito p
 test('tiempo: toHHMM correcto', () => {
   assert.equal(toHHMM(540), '09:00');
   assert.equal(toHHMM(780), '13:00');
+});
+
+test('plan: rebuildPlan al añadir un 2º objetivo conserva lo ya hecho y suma lo nuevo', () => {
+  let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
+  state = s1;
+  const first = p1.items[0];
+  state = recordCompletion(state, { date: '2025-06-15', behaviorId: first.behaviorId, minutes: first.minutes, plannedMinutes: first.minutes, dayMode: p1.mode });
+  // añadir un segundo objetivo
+  const d2 = decompose('Quiero leer más', '2025-06-15');
+  state = applyDecomposed(state, d2);
+  state = rebuildPlan(state, c);
+  const plan2 = state.plans['2025-06-15'];
+  // lo hecho se conserva
+  const kept = plan2.items.find((i) => i.behaviorId === first.behaviorId);
+  assert.ok(kept && kept.status === 'done_full');
+  // hay item nuevo del segundo objetivo
+  const newB = state.behaviors.find((b) => b.goalId === d2.goal.id)!;
+  assert.ok(plan2.items.some((i) => i.behaviorId === newB.id));
 });

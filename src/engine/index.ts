@@ -12,6 +12,7 @@ import type {
   CoachState,
   DayCheckIn,
   DayPlan,
+  PlanItemStatus,
   ReasonCode,
 } from './types.ts';
 import { planDay } from './planner.ts';
@@ -159,6 +160,31 @@ export function applyCoachReply(
     });
   }
   return s;
+}
+
+/**
+ * Regenera el plan de un día (p. ej. al añadir un objetivo/hábito a mitad de
+ * jornada) PRESERVANDO lo que ya se hizo o se excusó: lo pendiente se replanifica
+ * desde cero con los comportamientos actuales.
+ */
+export function rebuildPlan(state: CoachState, checkin: DayCheckIn): CoachState {
+  const date = checkin.date;
+  const prev = state.plans[date];
+  const prevStatus = new Map<string, PlanItemStatus>();
+  if (prev) {
+    for (const it of prev.items) prevStatus.set(it.behaviorId, it.status);
+  }
+  const plan = planDay({ state, checkin });
+  if (prev) {
+    plan.items = plan.items.map((i) => {
+      const s0 = prevStatus.get(i.behaviorId);
+      if (s0 === 'done_full' || s0 === 'done_minimal' || s0 === 'excused') {
+        return { ...i, status: s0 };
+      }
+      return i;
+    });
+  }
+  return { ...state, plans: { ...state.plans, [date]: plan } };
 }
 
 /** Añade el resultado de la descomposición de un objetivo al estado. */

@@ -188,6 +188,7 @@ a 10 min.
 | 4 | Patrones/insights + "¿Qué has aprendido de mí?" | pendiente |
 | 5 | Notificaciones contextuales (SW + Notification API, aviso por hábito) | ✅ hecho |
 | 6 | Migración v1→v2 (suma XP/historia) + misiones manuales dentro del día del coach | ✅ hecho |
+| 6b | Hasta 3 objetivos por fases (selector, añadir, plan unificado con etiquetas) | ✅ hecho |
 | 7 | Pulido UX, tests E2E de flujos, deploy | pendiente |
 
 ## 12. Riesgos técnicos
