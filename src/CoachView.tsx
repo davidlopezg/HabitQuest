@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, Flame, Send, X, Zap } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Send, X, Zap, MessageCircle } from 'lucide-react';
 import type {
   Behavior,
   CoachState,
@@ -39,6 +39,7 @@ import {
   WEEKDAY_ES,
   weekdayOf,
 } from './engine/index.ts';
+import CoachChat from './CoachChat.tsx';
 
 const STORAGE_KEY = 'habitquest_coach';
 const EXAMPLES = [
@@ -52,7 +53,17 @@ const EXAMPLES = [
 function loadState(): CoachState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as CoachState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CoachState>;
+      const base = emptyState();
+      return {
+        ...base,
+        ...parsed,
+        counters: { ...base.counters, ...(parsed.counters ?? {}) },
+        memory: { ...base.memory, ...(parsed.memory ?? {}) },
+        chat: parsed.chat ?? [],
+      } as CoachState;
+    }
   } catch {
     /* ignore */
   }
@@ -102,6 +113,7 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
   const [cannotItem, setCannotItem] = useState<string | null>(null); // modal NO PUEDO
   const [cannotText, setCannotText] = useState('');
   const [showIntro, setShowIntro] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const today = todayKey();
 
@@ -380,6 +392,22 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
           </button>
         )}
       </p>
+
+      {/* Botón de chat con el coach */}
+      <button
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-28 right-5 w-14 h-14 rpg-gradient rounded-full shadow-lg flex items-center justify-center z-40"
+        aria-label="Hablar con tu coach"
+      >
+        <MessageCircle size={28} />
+      </button>
+      <CoachChat
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        state={cs}
+        setState={setCs}
+        today={today}
+      />
     </div>
   );
 }

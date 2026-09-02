@@ -175,6 +175,7 @@ export interface CoachState {
   plans: Record<string, DayPlan>; // por fecha
   counters: CoachCounters;
   memory: UserMemory;
+  chat: ChatMessage[]; // conversación con el coach (se conserva en memoria de usuario)
 }
 
 /** Eventos de gamificación generados por el motor (para integrar con XP actual). */
@@ -201,4 +202,11 @@ export interface CoachReply {
   message: string;
   plan: DayPlan;
   events: CoachEvent[];
+}
+
+/** Mensaje de la conversación con el coach. */
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  ts: string; // ISO
 }

@@ -8,9 +8,11 @@
 import type {
   BehaviorLogEntry,
   CoachCounters,
+  CoachReply,
   CoachState,
   DayCheckIn,
   DayPlan,
+  ReasonCode,
 } from './types.ts';
 import { planDay } from './planner.ts';
 
@@ -47,6 +49,7 @@ export function emptyState(): CoachState {
     plans: {},
     counters: emptyCounters(),
     memory: { reasonCounts: {}, weakWeekdays: [], lastInsights: [], bestSlotByBehavior: {} },
+    chat: [],
   };
 }
 
@@ -129,6 +132,33 @@ export function recordCompletion(state: CoachState, input: CompletionInput): Coa
   }
 
   return newState;
+}
+
+/**
+ * Aplica la respuesta de replanificación del coach al estado:
+ * 1. sustituye el plan del día por el replanificado;
+ * 2. si la acción dejó el hábito excusado, registra el log (para patrones).
+ */
+export function applyCoachReply(
+  state: CoachState,
+  date: string,
+  reply: CoachReply,
+  behaviorId: string,
+  plannedMinutes: number,
+  code?: ReasonCode,
+): CoachState {
+  let s: CoachState = { ...state, plans: { ...state.plans, [date]: reply.plan } };
+  if (reply.action === 'mode_change' || reply.action === 'excused') {
+    s = recordCompletion(s, {
+      date,
+      behaviorId,
+      minutes: 0,
+      reasonCode: code,
+      dayMode: reply.plan.mode,
+      plannedMinutes,
+    });
+  }
+  return s;
 }
 
 /** Añade el resultado de la descomposición de un objetivo al estado. */

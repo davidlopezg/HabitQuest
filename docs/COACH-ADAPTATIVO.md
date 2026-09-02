@@ -103,18 +103,32 @@ de rachas/XP.
 
 ## 6. Arquitectura de IA
 
+**Proveedor: MiniMax** (plataforma internacional `api.minimax.io`, modelo
+`MiniMax-M2`, API compatible con OpenAI). Capa `src/services/ai/`:
+
 ```
-AIService (provider-agnostic: Gemini hoy, otro mañana)
-   ├── GoalDecomposer      → enriquece decompose() (validado contra reglas)
-   ├── Coach               → chat con contexto del usuario y del día
-   ├── ExcuseInterpreter   → matiza classifyReason() (nunca lo sustituye)
-   ├── PatternDetector     → redacta insights en lenguaje natural
-   └── HabitAdjuster       → propone cambios (validados por progression)
+AIService (MiniMax, intercambiable — endpoint OpenAI-compatible)
+   ├── config.ts        → lee VITE_MINIMAX_API_KEY / _MODEL / _BASE_URL
+   ├── coach.ts         → SYSTEM_PROMPT + contexto del usuario + respuestas
+   │                      offline deterministas (sin key) + learnedInsights
+   └── CoachChat (UI)   → chat con acciones reales (replanificación vía motor)
 ```
 
-Regla: si no hay `GEMINI_API_KEY`, la app funciona al 100 % con el motor
-determinista (modo offline). El LLM jamás decide por sí solo subir/bajar un
-nivel ni genera un plan imposible: esas decisiones pasan por el motor.
+Regla: si no hay `VITE_MINIMAX_API_KEY`, la app funciona al 100 % con el motor
+determinista (chat en modo local). El LLM jamás decide por sí solo subir/bajar
+un nivel ni genera un plan imposible: si el mensaje indica "no puedo", la
+replanificación la ejecuta el motor (`handleCannot`), no el modelo.
+
+### Dónde va la API key
+
+1. **Local** (`npm run dev`): crea `.env` a partir de `.env.example` y pon
+   `VITE_MINIMAX_API_KEY="tu-clave"` (consíguela en https://platform.minimax.io).
+2. **Producción** (GitHub Pages): NO subas el `.env`. Ve a
+   **repo → Settings → Secrets and variables → Actions → New repository secret**
+   y crea `VITE_MINIMAX_API_KEY` (el CI la inyecta en el build).
+
+⚠️ Al ser una SPA estática, la key queda embebida en el bundle JS. Aceptable
+para uso personal/MVP; para una app pública usa un proxy serverless.
 
 ## 7. Algoritmo de progresión (implementado)
 
@@ -167,8 +181,8 @@ a 10 min.
 | Fase | Alcance | Estado |
 |---|---|---|
 | 0 | Motor determinista + tests (21) | ✅ hecho y verificado |
-| 1 | Chat/IA opcional (`src/services/ai/`, Gemini) | ⏳ siguiente |
-| 2 | UI: onboarding objetivo + check-in + plan en Home | pendiente |
+| 1 | Chat/IA con MiniMax (`src/services/ai/`) + insights | ✅ hecho (Fase 3) |
+| 2 | UI: onboarding objetivo + check-in + plan en Home | ✅ hecho (Fase 2) |
 | 3 | Flujo "No puedo" + replanificación en UI | pendiente |
 | 4 | Patrones/insights + "¿Qué has aprendido de mí?" | pendiente |
 | 5 | Notificaciones (SW + Notification API) | pendiente |
@@ -211,7 +225,6 @@ a 10 min.
 
 ## 15. Estado actual de implementación (verificado)
 
-- `src/engine/` completo y tipado: `npx tsc --noEmit` ✓ (incluye fix de
-  `vite-env.d.ts` preexistente).
-- 21 tests verdes: `npm test` ✓ (`node --test src/engine/engine.test.ts`).
-- Build de producción intacto: `npm run build` ✓.
+- Motor (`src/engine/`), UI del coach (`CoachView`) y chat con IA MiniMax
+  (`services/ai/` + `CoachChat`) implementados.
+- `npx tsc --noEmit` ✓ · tests `npm test` ✓ · `npm run build` ✓.

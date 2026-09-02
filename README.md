@@ -7,7 +7,29 @@
 > El motor determinista vive en [`src/engine/`](src/engine) y está verificado con tests: `npm test`.
 >
 > ✨ **Tab Coach**: escribe tu objetivo → check-in matutino de 20 s → plan del día que se adapta (AHORA / PRÓXIMO / HOY) con botones EMPEZAR / NO PUEDO / versión mínima.
+>
+> 🤖 **Chat con coach IA (MiniMax)**: habla con el coach, que replanifica tu día de verdad.
 
+---
+
+## 🔑 Dónde va la API key de MiniMax (chat con IA)
+
+1. Crea una API key en **https://platform.minimax.io** (sección *API Keys*).
+2. **Para desarrollo local**: crea un archivo `.env` (cópialo de `.env.example`)
+   y pon: `VITE_MINIMAX_API_KEY="tu-clave"`  — después `npm run dev`.
+3. **Para la versión desplegada (GitHub Pages)**: NO subas el `.env`. Añade un
+   *secret* en GitHub: **repo → Settings → Secrets and variables → Actions →
+   New repository secret**, nombre `VITE_MINIMAX_API_KEY`, valor tu clave. El
+   CI la inyecta sola en el próximo build.
+
+Sin API key la app funciona igual: el chat responde en **modo local** (motor
+determinista). Modelo por defecto: `MiniMax-M2` (configurable con
+`VITE_MINIMAX_MODEL`).
+
+> ⚠️ Al ser una SPA estática la key queda en el JS del navegador: perfecto para
+> uso personal; para una app pública usa un proxy serverless.
+
+---
 ---
 
 ## 🧪 Tests del motor adaptativo
