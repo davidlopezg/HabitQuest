@@ -63,6 +63,8 @@ export interface Behavior {
   introducedAt: string; // fecha de alta (YYYY-MM-DD)
   currentLevel: number; // nivel actual (1-based)
   preferredSlots: DaySlot[];
+  /** Hora exacta preferida (minutos desde medianoche, ej: 540 = 09:00). Si no está definida, el plan usa la hora por defecto de la franja. */
+  startMinute?: number;
   customLevels?: BehaviorLevelDef[]; // curva personalizada (opcional)
 }
 

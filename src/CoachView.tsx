@@ -19,6 +19,7 @@ import type {
   DayCheckIn,
   DayIntention,
   DayMode,
+  DaySlot,
   Goal,
   PlanItem,
   TimeAvailable,
@@ -43,6 +44,8 @@ import {
   rebuildPlan,
   recordCompletion,
   resolveLevels,
+  SLOT_DEFAULT_MIN,
+  SLOT_LABEL,
   streakDays,
   todayKey,
   toHHMM,
@@ -504,6 +507,34 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
     setNotice({ icon: '🌱', text: `Nuevo hábito: ${t.name}. Nivel 1 — objetivo mínimo. Sin prisa.` });
   }
 
+  /** Cambia franja/hora de un comportamiento y replanifica HOY conservando lo hecho. */
+  function updateBehaviorTime(id: string, patch: { slot?: DaySlot; startMinute?: number }) {
+    setCs((prev) => {
+      let s: CoachState = {
+        ...prev,
+        behaviors: prev.behaviors.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                preferredSlots: patch.slot
+                  ? [patch.slot, ...b.preferredSlots.filter((x) => x !== patch.slot)]
+                  : b.preferredSlots,
+                startMinute:
+                  patch.slot !== undefined
+                    ? undefined
+                    : patch.startMinute !== undefined
+                      ? Math.round(patch.startMinute)
+                      : b.startMinute,
+              }
+            : b,
+        ),
+      };
+      const ck = s.checkins.find((c) => c.date === today);
+      if (ck) s = rebuildPlan(s, ck);
+      return s;
+    });
+  }
+
   // ---------- render por fase ----------
 
   if (phase === 'onboarding') {
@@ -766,6 +797,7 @@ export default function CoachView({ onGoManual, manualMissions }: CoachViewProps
             counters={cs.counters}
             today={today}
             onClose={() => setDetailGoalId(null)}
+            onEditBehavior={updateBehaviorTime}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
               setDetailGoalId(null);
@@ -1433,6 +1465,7 @@ interface GoalDetailProps {
   today: string;
   onClose: () => void;
   onIntroduce: (goalId: string) => void;
+  onEditBehavior: (id: string, patch: { slot?: DaySlot; startMinute?: number }) => void;
   canIntroduce: boolean;
 }
 
@@ -1460,6 +1493,7 @@ function GoalDetailOverlay({
   today,
   onClose,
   onIntroduce,
+  onEditBehavior,
   canIntroduce,
 }: GoalDetailProps) {
   const pipelineTemplates = goal.pipeline
@@ -1596,6 +1630,55 @@ function GoalDetailOverlay({
                       </span>
                     );
                   })}
+                </div>
+
+                {/* Horario: franja + hora exacta */}
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-rpg-text-secondary">🕐 Horario</span>
+                    <label className="flex items-center gap-1.5 text-[11px] text-rpg-text-secondary">
+                      a las
+                      <input
+                        type="time"
+                        value={toHHMM(b.startMinute ?? SLOT_DEFAULT_MIN[b.preferredSlots[0] ?? 'morning'])}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (!v) return;
+                          const [hh, mm] = v.split(':').map(Number);
+                          if (Number.isFinite(hh) && Number.isFinite(mm)) {
+                            onEditBehavior(b.id, { startMinute: hh * 60 + mm });
+                          }
+                        }}
+                        className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-cyan-200 outline-none text-sm"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {(['morning', 'midday', 'afternoon', 'night'] as DaySlot[]).map((sl) => {
+                      const active = b.preferredSlots[0] === sl && b.startMinute === undefined;
+                      return (
+                        <button
+                          key={sl}
+                          onClick={() => onEditBehavior(b.id, { slot: sl })}
+                          className={`text-[10px] px-2 py-1 rounded-lg ${
+                            active
+                              ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60'
+                              : 'bg-white/5 text-rpg-text-secondary'
+                          }`}
+                        >
+                          {SLOT_LABEL[sl]} {toHHMM(SLOT_DEFAULT_MIN[sl])}
+                        </button>
+                      );
+                    })}
+                    {b.startMinute !== undefined && (
+                      <span className="text-[10px] px-2 py-1 rounded-lg bg-white/5 text-rpg-text-secondary">
+                        hora personalizada
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[9px] text-rpg-text-secondary">
+                    Cambios de horario se aplican hoy mismo (y de ahora en adelante).
+                  </p>
                 </div>
               </div>
             );

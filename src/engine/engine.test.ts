@@ -390,6 +390,15 @@ test('tiempo: toHHMM correcto', () => {
   assert.equal(toHHMM(780), '13:00');
 });
 
+test('plan: respeta la hora exacta (startMinute) del comportamiento', () => {
+  const state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
+  const b = state.behaviors[0];
+  state.behaviors = state.behaviors.map((x) => (x.id === b.id ? { ...x, startMinute: 660 } : x)); // 11:00
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan } = getOrBuildPlan(state, c);
+  assert.equal(plan.items[0].startMinute, 660);
+});
+
 test('plan: rebuildPlan al añadir un 2º objetivo conserva lo ya hecho y suma lo nuevo', () => {
   let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
   const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });

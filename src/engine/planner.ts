@@ -108,8 +108,11 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
     const minutes = version === 'full' ? def.minutes : def.minimal!;
     if (used + minutes + 2 > budget) continue; // nunca planes imposibles
     const slot = b.preferredSlots[0] ?? 'morning';
-    const startMinute = SLOT_DEFAULT_MIN[slot] + slotCounters[slot] * 25;
     slotCounters[slot]++;
+    const startMinute =
+      b.startMinute !== undefined
+        ? Math.min(Math.max(0, Math.round(b.startMinute)), 1420)
+        : Math.min(SLOT_DEFAULT_MIN[slot] + (slotCounters[slot] - 1) * 25, 1420);
     items.push({
       id: `${date}__${b.id}`,
       behaviorId: b.id,
