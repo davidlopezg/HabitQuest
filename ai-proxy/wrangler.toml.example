@@ -1,0 +1,19 @@
+# Plantilla de despliegue local del Worker (opcional, para wrangler CLI).
+# También puedes pegarlo directamente en el editor web de Cloudflare (recomendado).
+
+name = "habitquest-ai-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# ── Secretos (nunca en el repo; se configuran con `wrangler secret put`) ──
+#   MINIMAX_API_KEY  → tu API key de MiniMax (https://platform.minimax.io)
+#   AI_PROXY_TOKEN   → opcional: token compartido que debe enviar la app
+
+[vars]
+# Sin variables públicas por defecto.
+
+# Comandos:
+#   npx wrangler login
+#   npx wrangler secret put MINIMAX_API_KEY
+#   npx wrangler secret put AI_PROXY_TOKEN   (opcional)
+#   npx wrangler deploy

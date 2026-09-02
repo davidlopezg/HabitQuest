@@ -185,12 +185,14 @@ export async function chatWithCoach(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // Directo: la key de MiniMax. Vía proxy: un token compartido opcional (la
+    // key real vive en el servidor del proxy, nunca en el bundle).
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+    else if (cfg.proxyToken) headers.Authorization = `Bearer ${cfg.proxyToken}`;
     const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: cfg.model,
         messages,
@@ -201,7 +203,9 @@ export async function chatWithCoach(
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`MiniMax respondió ${res.status}: ${body.slice(0, 160)}`);
+      throw new Error(
+        `${cfg.mode === 'proxy' ? 'El proxy de IA' : 'MiniMax'} respondió ${res.status}: ${body.slice(0, 160)}`,
+      );
     }
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

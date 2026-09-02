@@ -134,9 +134,11 @@ export default function CoachChat({ open, onClose, state, setState, today }: Pro
                 <div>
                   <h3 className="font-heading font-bold">Tu coach</h3>
                   <p className="text-[10px] text-rpg-text-secondary">
-                    {cfg.enabled
-                      ? `MiniMax online · ${cfg.model}`
-                      : 'Modo local · añade tu API key para el coach con IA'}
+                    {cfg.mode === 'proxy'
+                      ? 'MiniMax · vía proxy seguro'
+                      : cfg.enabled
+                        ? `MiniMax online · ${cfg.model}`
+                        : 'Modo local · añade tu API key para el coach con IA'}
                   </p>
                 </div>
               </div>

@@ -20,17 +20,28 @@ export interface AIConfig {
   baseUrl: string;
   model: string;
   provider: 'minimax';
+  /** 'direct' = el navegador llama a MiniMax (solo uso personal); 'proxy' = vía servidor seguro. */
+  mode: 'direct' | 'proxy';
+  /** Token compartido opcional si el proxy lo exige. */
+  proxyToken?: string;
 }
 
 export function getAIConfig(): AIConfig {
   // import.meta.env puede no existir en entornos Node (tests): acceso seguro.
   const env: Record<string, string | undefined> = ((import.meta as { env?: Record<string, string> }).env ?? {});
+  const proxy = env.VITE_AI_PROXY_URL?.trim() ?? '';
   const apiKey = env.VITE_MINIMAX_API_KEY?.trim() ?? '';
+  const mode: 'proxy' | 'direct' = proxy ? 'proxy' : 'direct';
   return {
-    enabled: apiKey.length > 0,
+    enabled: mode === 'proxy' || apiKey.length > 0,
     apiKey,
-    baseUrl: env.VITE_MINIMAX_BASE_URL?.trim() || 'https://api.minimax.io/v1',
+    baseUrl:
+      proxy ||
+      env.VITE_MINIMAX_BASE_URL?.trim() ||
+      'https://api.minimax.io/v1',
     model: env.VITE_MINIMAX_MODEL?.trim() || 'MiniMax-M2',
     provider: 'minimax',
+    mode,
+    proxyToken: env.VITE_AI_PROXY_TOKEN?.trim(),
   };
 }

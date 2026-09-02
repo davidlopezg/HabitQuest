@@ -14,20 +14,30 @@
 
 ## 🔑 Dónde va la API key de MiniMax (chat con IA)
 
-1. Crea una API key en **https://platform.minimax.io** (sección *API Keys*).
-2. **Para desarrollo local**: crea un archivo `.env` (cópialo de `.env.example`)
-   y pon: `VITE_MINIMAX_API_KEY="tu-clave"`  — después `npm run dev`.
-3. **Para la versión desplegada (GitHub Pages)**: NO subas el `.env`. Añade un
-   *secret* en GitHub: **repo → Settings → Secrets and variables → Actions →
-   New repository secret**, nombre `VITE_MINIMAX_API_KEY`, valor tu clave. El
-   CI la inyecta sola en el próximo build.
+GitHub Pages es **estático**: cualquier variable `VITE_*` acaba incrustada en el
+JS público. Por eso hay dos modos:
 
-Sin API key la app funciona igual: el chat responde en **modo local** (motor
-determinista). Modelo por defecto: `MiniMax-M2` (configurable con
-`VITE_MINIMAX_MODEL`).
+**Modo A · Uso personal (rápido):** la key se incrusta en el bundle.
+1. Crea la key en **https://platform.minimax.io** (*API Keys*).
+2. Local (`npm run dev`): en `.env` → `VITE_MINIMAX_API_KEY="tu-clave"`.
+3. Desplegado: **repo → Settings → Secrets and variables → Actions → New
+   repository secret** con nombre `VITE_MINIMAX_API_KEY` (el CI la inyecta).
+   ⚠️ Queda visible en el JS: perfecto para ti, no para una app pública.
 
-> ⚠️ Al ser una SPA estática la key queda en el JS del navegador: perfecto para
-> uso personal; para una app pública usa un proxy serverless.
+**Modo B · App pública (recomendado):** la key vive en un proxy serverless
+(Cloudflare Worker), nunca en el bundle.
+1. Despliega [`ai-proxy/worker.js`](ai-proxy/worker.js) en Cloudflare Workers
+   (instrucciones en el propio archivo) y ponle la key como SECRETO
+   `MINIMAX_API_KEY`.
+2. En `.env` (local) y como variable normal del workflow (CI) configura
+   `VITE_AI_PROXY_URL="https://tu-worker.tu-subdominio.workers.dev"`
+   (y opcionalmente `VITE_AI_PROXY_TOKEN` si activas el token compartido).
+3. La app habla con el proxy; MiniMax nunca ve tu key.
+
+Modelo por defecto: `MiniMax-M2` (configurable con `VITE_MINIMAX_MODEL`). Sin
+key o sin proxy, el chat responde en **modo local** (motor determinista).
+
+---
 
 ---
 ---

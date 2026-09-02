@@ -121,14 +121,15 @@ replanificación la ejecuta el motor (`handleCannot`), no el modelo.
 
 ### Dónde va la API key
 
-1. **Local** (`npm run dev`): crea `.env` a partir de `.env.example` y pon
-   `VITE_MINIMAX_API_KEY="tu-clave"` (consíguela en https://platform.minimax.io).
-2. **Producción** (GitHub Pages): NO subas el `.env`. Ve a
-   **repo → Settings → Secrets and variables → Actions → New repository secret**
-   y crea `VITE_MINIMAX_API_KEY` (el CI la inyecta en el build).
+GitHub Pages es hosting estático: toda variable `VITE_*` queda incrustada en
+el bundle. Dos modos:
 
-⚠️ Al ser una SPA estática, la key queda embebida en el bundle JS. Aceptable
-para uso personal/MVP; para una app pública usa un proxy serverless.
+- **A · Personal**: key en un secret de GitHub (`VITE_MINIMAX_API_KEY`) que el
+  CI inyecta en el build. Rápido; la key queda en el JS (aceptable para ti).
+- **B · Pública (recomendada)**: despliega `ai-proxy/worker.js` (Cloudflare
+  Workers) con la key como SECRETO del Worker (`MINIMAX_API_KEY`); en la app
+  solo se configura la URL pública `VITE_AI_PROXY_URL`. La key nunca sale del
+  servidor del proxy.
 
 ## 7. Algoritmo de progresión (implementado)
 
