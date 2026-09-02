@@ -5,6 +5,8 @@
 > 🧠 **En evolución hacia Coach Adaptativo con IA** (objetivos en lenguaje natural → plan diario adaptativo → replanificación).
 > El diseño completo y el roadmap están en [`docs/COACH-ADAPTATIVO.md`](docs/COACH-ADAPTATIVO.md).
 > El motor determinista vive en [`src/engine/`](src/engine) y está verificado con tests: `npm test`.
+>
+> ✨ **Tab Coach**: escribe tu objetivo → check-in matutino de 20 s → plan del día que se adapta (AHORA / PRÓXIMO / HOY) con botones EMPEZAR / NO PUEDO / versión mínima.
 
 ---
 

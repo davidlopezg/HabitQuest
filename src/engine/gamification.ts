@@ -53,7 +53,9 @@ export function evaluateCompletion(
   const done = minutes > 0;
   const isFull = done && minutes >= plannedMinutes * 0.75;
   const adverse = dayMode === 'recovery' || dayMode === 'minimal';
-  const resilience = adverse && done && !isFull;
+  // §18: completar CUALQUIER versión en un día adverso (el plan ya era mínimo)
+  // es una victoria de resiliencia, no un logro menor.
+  const resilience = adverse && done;
 
   if (done) counters.totalDone++;
   if (done && !isFull) counters.totalMinimal++;

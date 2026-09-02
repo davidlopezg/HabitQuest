@@ -154,6 +154,7 @@ export interface CoachCounters {
   totalMinimal: number;
   replans: number;
   consolidated: string[]; // behaviorIds consolidados
+  xp: number; // XP acumulada del coach (para nivel/panel HOY)
 }
 
 /** Memoria del usuario que la app construye con el tiempo. */

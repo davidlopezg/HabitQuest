@@ -33,6 +33,7 @@ export function emptyCounters(): CoachCounters {
     totalMinimal: 0,
     replans: 0,
     consolidated: [],
+    xp: 0,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   BarChart2, 
   Award, 
   User, 
+  Sparkles,
   Plus, 
   CheckCircle2, 
   Circle, 
@@ -25,6 +26,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import CoachView from './CoachView.tsx';
 
 // --- Types ---
 interface Habit {
@@ -154,7 +156,7 @@ export default function App() {
     };
   });
 
-  const [activeTab, setActiveTab] = useState<'home' | 'stats' | 'quests' | 'hero'>('home');
+  const [activeTab, setActiveTab] = useState<'coach' | 'home' | 'stats' | 'quests' | 'hero'>('coach');
   const [showCelebration, setShowCelebration] = useState<{ xp: number, gems: number } | null>(null);
   const [isLevelUp, setIsLevelUp] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -891,6 +893,7 @@ export default function App() {
   return (
     <div className="min-h-screen max-w-lg mx-auto pb-24 px-5 pt-8 select-none">
       <AnimatePresence>
+        {activeTab === 'coach' && <motion.div key="coach" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><CoachView onGoManual={() => setActiveTab('home')} /></motion.div>}
         {activeTab === 'home' && <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderHome()}</motion.div>}
         {activeTab === 'stats' && <motion.div key="stats" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderStats()}</motion.div>}
         {activeTab === 'quests' && <motion.div key="quests" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderAchievements()}</motion.div>}
@@ -898,10 +901,11 @@ export default function App() {
       </AnimatePresence>
 
       <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto h-20 bg-rpg-card/80 backdrop-blur-lg border-t border-white/5 flex items-center justify-around z-50">
-        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 px-4 py-2 ${activeTab === 'home' ? 'text-white' : 'text-rpg-text-secondary'}`}><Home size={22} /><span className="text-[9px]">Inicio</span></button>
-        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center gap-1 px-4 py-2 ${activeTab === 'stats' ? 'text-white' : 'text-rpg-text-secondary'}`}><BarChart2 size={22} /><span className="text-[9px]">Stats</span></button>
-        <button onClick={() => setActiveTab('quests')} className={`flex flex-col items-center gap-1 px-4 py-2 ${activeTab === 'quests' ? 'text-white' : 'text-rpg-text-secondary'}`}><Award size={22} /><span className="text-[9px]">Logros</span></button>
-        <button onClick={() => setActiveTab('hero')} className={`flex flex-col items-center gap-1 px-4 py-2 ${activeTab === 'hero' ? 'text-white' : 'text-rpg-text-secondary'}`}><User size={22} /><span className="text-[9px]">Heroe</span></button>
+        <button onClick={() => setActiveTab('coach')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'coach' ? 'text-white' : 'text-rpg-text-secondary'}`}><Sparkles size={20} /><span className="text-[9px]">Coach</span></button>
+        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'home' ? 'text-white' : 'text-rpg-text-secondary'}`}><Home size={20} /><span className="text-[9px]">Inicio</span></button>
+        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'stats' ? 'text-white' : 'text-rpg-text-secondary'}`}><BarChart2 size={20} /><span className="text-[9px]">Stats</span></button>
+        <button onClick={() => setActiveTab('quests')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'quests' ? 'text-white' : 'text-rpg-text-secondary'}`}><Award size={20} /><span className="text-[9px]">Logros</span></button>
+        <button onClick={() => setActiveTab('hero')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'hero' ? 'text-white' : 'text-rpg-text-secondary'}`}><User size={20} /><span className="text-[9px]">Héroe</span></button>
       </nav>
 
       {/* Add/Edit Habit */}
