@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, Flame, Send, X, Zap, MessageCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, MessageCircle, Send, X, Zap } from 'lucide-react';
 import type {
   Behavior,
   CoachState,
@@ -40,6 +40,7 @@ import {
   weekdayOf,
 } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
+import { computeLegacySeed, migrationMessage } from './migration.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
 const EXAMPLES = [
@@ -105,7 +106,25 @@ function closePreviousDays(state: CoachState, today: string): CoachState {
 
 // ---------- Componente ----------
 
-export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
+export interface ManualMissionItem {
+  id: string;
+  name: string;
+  icon: string;
+  done: boolean;
+}
+
+export interface ManualMissionsProps {
+  items: ManualMissionItem[];
+  onToggle: (id: string) => void;
+}
+
+interface CoachViewProps {
+  onGoManual?: () => void;
+  /** Misiones manuales del modo libre (v1) para mostrarlas dentro del día del coach. */
+  manualMissions?: ManualMissionsProps;
+}
+
+export default function CoachView({ onGoManual, manualMissions }: CoachViewProps) {
   const [cs, setCs] = useState<CoachState>(loadState);
   const [objective, setObjective] = useState('');
   const [notice, setNotice] = useState<{ icon: string; text: string } | null>(null);
@@ -254,9 +273,34 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
     const outcome = decompose(text, today);
     let next = applyDecomposed(cs, outcome);
     next = { ...next, plans: {} };
+
+    // Migración única: sumar el progreso del modo manual (v1) al coach.
+    let msg = outcome.message;
+    let icon = '🧠';
+    try {
+      const migrated = localStorage.getItem('habitquest_migrated');
+      if (!migrated && cs.counters.xp === 0) {
+        const legacyRaw = localStorage.getItem('habitquest_data');
+        if (legacyRaw) {
+          const seed = computeLegacySeed(JSON.parse(legacyRaw));
+          if (seed.hasLegacy) {
+            next = {
+              ...next,
+              counters: { ...next.counters, xp: seed.seedXp },
+            };
+            localStorage.setItem('habitquest_migrated', '1');
+            msg = migrationMessage(seed) + '\n\n' + outcome.message;
+            icon = '🎁';
+          }
+        }
+      }
+    } catch {
+      /* si no hay datos v1 o son inválidos, se ignora */
+    }
+
     setCs(next);
     setShowIntro(true);
-    setNotice({ icon: '🧠', text: outcome.message });
+    setNotice({ icon, text: msg });
   }
 
   function submitCheckin(c: DayCheckIn) {
@@ -472,6 +516,7 @@ export default function CoachView({ onGoManual }: { onGoManual?: () => void }) {
         xp={xp}
         pipelineLength={goal!.pipeline.length}
         onIntroduceNext={behaviors.some((b) => cs.counters.consolidated.includes(b.id)) ? introduceNextBehavior : undefined}
+        manualMissions={manualMissions}
       />
 
       {/* Modal NO PUEDO */}
@@ -540,10 +585,11 @@ interface PlanBodyProps {
   xp: number;
   pipelineLength: number;
   onIntroduceNext?: () => void;
+  manualMissions?: ManualMissionsProps;
 }
 
 function PlanBody(props: PlanBodyProps) {
-  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot } = props;
+  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot, manualMissions } = props;
   if (!plan || plan.items.length === 0) {
     return (
       <section className="rpg-card p-6 text-center">
@@ -668,6 +714,36 @@ function PlanBody(props: PlanBodyProps) {
                 <span className="text-xs line-through decoration-green-400/60">{it.label}</span>
               </div>
             ))}
+        </section>
+      )}
+
+      {/* Misiones manuales (modo libre) integradas en el día */}
+      {manualMissions && manualMissions.items.length > 0 && (
+        <section className="rpg-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-heading font-bold text-sm">🧰 Misiones manuales</h4>
+            <span className="text-[9px] uppercase tracking-wider text-rpg-text-secondary">modo libre</span>
+          </div>
+          <div className="space-y-1.5">
+            {manualMissions.items.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => manualMissions.onToggle(it.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left ${it.done ? 'bg-white/5 opacity-60' : 'bg-black/20'}`}
+              >
+                <span className="text-lg">{it.icon}</span>
+                <span className={`flex-1 text-xs ${it.done ? 'line-through opacity-70' : ''}`}>{it.name}</span>
+                {it.done ? (
+                  <CheckCircle2 size={16} className="text-green-400 shrink-0" />
+                ) : (
+                  <Circle size={16} className="text-white/20 shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-rpg-text-secondary">
+            Van a tu modo manual (Inicio). Los hábitos del coach arriba sí se adaptan a ti.
+          </p>
         </section>
       )}
 

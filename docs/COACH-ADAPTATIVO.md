@@ -187,7 +187,7 @@ a 10 min.
 | 3 | Flujo "No puedo" + replanificación en UI | pendiente |
 | 4 | Patrones/insights + "¿Qué has aprendido de mí?" | pendiente |
 | 5 | Notificaciones contextuales (SW + Notification API, aviso por hábito) | ✅ hecho |
-| 6 | Migración v1→v2 de datos + pruebas de integración | pendiente |
+| 6 | Migración v1→v2 (suma XP/historia) + misiones manuales dentro del día del coach | ✅ hecho |
 | 7 | Pulido UX, tests E2E de flujos, deploy | pendiente |
 
 ## 12. Riesgos técnicos

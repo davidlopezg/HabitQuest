@@ -923,7 +923,22 @@ export default function App() {
   return (
     <div className="min-h-screen max-w-lg mx-auto pb-24 px-5 pt-8 select-none">
       <AnimatePresence>
-        {activeTab === 'coach' && <motion.div key="coach" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><CoachView onGoManual={() => setActiveTab('home')} /></motion.div>}
+        {activeTab === 'coach' && (
+          <motion.div key="coach" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <CoachView
+              onGoManual={() => setActiveTab('home')}
+              manualMissions={{
+                items: userData.habits.map((h) => ({
+                  id: h.id,
+                  name: h.name,
+                  icon: h.icon,
+                  done: h.completedDates.includes(today),
+                })),
+                onToggle: (id) => toggleHabit(id),
+              }}
+            />
+          </motion.div>
+        )}
         {activeTab === 'home' && <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderHome()}</motion.div>}
         {activeTab === 'stats' && <motion.div key="stats" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderStats()}</motion.div>}
         {activeTab === 'quests' && <motion.div key="quests" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderAchievements()}</motion.div>}
