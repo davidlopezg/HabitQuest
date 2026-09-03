@@ -226,7 +226,15 @@ export const CATALOG: BehaviorTemplate[] = [
     kind: 'binary',
     slots: ['morning'],
     purpose: 'Es un hábito de sí/no: se toma o no se toma, sin medir volumen.',
-    levels: [{ level: 1, minutes: 1, label: 'Tomar vitaminas', need: 5, window: 7 }],
+    levels: [
+      { level: 1, minutes: 1, label: 'Saca el bote y ponlo donde lo veas (encimera o baño).', need: 5, window: 7 },
+      { level: 2, minutes: 1, label: 'Ponlo junto a una rutina que ya haces (café o cepillarte).' },
+      { level: 3, minutes: 1, label: 'Tómalo hoy a esa hora y márcalo.' },
+      { level: 4, minutes: 1, label: 'Tómalo cada día a esa misma hora.' },
+      { level: 5, minutes: 1, label: 'Tómalo sin pensarlo: ya es costumbre.' },
+      { level: 6, minutes: 1, label: 'Idem: hábito instalado.' },
+      { level: 7, minutes: 1, label: 'Ajusta dosis u horario si lo necesitas.' },
+    ],
   },
 ];
 
