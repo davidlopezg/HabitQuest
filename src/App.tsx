@@ -170,6 +170,7 @@ export default function App() {
   const [quickComplete, setQuickComplete] = useState(false);
   const [longPressHabit, setLongPressHabit] = useState<string | null>(null);
   const [contextMenuHabit, setContextMenuHabit] = useState<Habit | null>(null);
+  const [showCoachOpinion, setShowCoachOpinion] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [comboCount, setComboCount] = useState(0);
   const [comboTimer, setComboTimer] = useState<NodeJS.Timeout | null>(null);
@@ -516,8 +517,50 @@ export default function App() {
     return weekStart.toISOString().split('T')[0];
   };
 
+  // Opinión local del coach sobre los hábitos recurrentes del día
+  const computeCoachOpinion = () => {
+    const todayHabits = userData.habits.filter((h) => h.group !== 'night' && h.group !== 'evening');
+    if (todayHabits.length === 0) {
+      return {
+        done: [] as Habit[],
+        pending: [] as Habit[],
+        best: null as Habit | null,
+        worst: null as Habit | null,
+        pct: 0,
+        title: 'Sin misiones todavía',
+        message: 'Añade misiones manuales en Heroe → Gestionar Habitos para que pueda orientarte.',
+      };
+    }
+    const done = todayHabits.filter((h) => h.completedDates.includes(today));
+    const pending = todayHabits.filter((h) => !h.completedDates.includes(today));
+    const withStreak = todayHabits.filter((h) => h.streak > 0);
+    const best = withStreak.length > 0 ? withStreak.reduce((a, b) => (b.streak > a.streak ? b : a)) : null;
+    const worst = pending.length > 0
+      ? pending.reduce((a, b) => (((b as any).lastMissedDays ?? 0) > ((a as any).lastMissedDays ?? 0) ? b : a))
+      : null;
+    const pct = Math.round((done.length / todayHabits.length) * 100);
+    let title = '';
+    let main = '';
+    if (pct === 100) {
+      title = 'Dia limpio';
+      main = `${done.length} de ${todayHabits.length} misiones completadas. Manana mantén el mismo ritmo y no subas el listón: la constancia gana.`;
+    } else if (pct >= 70) {
+      title = 'Buen dia';
+      main = `${pct}% hecho. Te queda poco: cierra el dia sin culpa y descansa.`;
+    } else if (pct >= 40) {
+      title = 'Mitad de camino';
+      main = `Vas al ${pct}%. Manana reduce el plan: empieza por lo mas pequeno y suma.`;
+    } else {
+      title = 'Dia duro';
+      main = `Solo ${pct}% hecho. Manana sal con lo minimo: 1 mision a la manana, y ya.`;
+    }
+    return { done, pending, best, worst, pct, title, message: main };
+  };
+
   // --- Render ---
-  const renderHome = () => (
+  const renderHome = () => {
+    const opinion = computeCoachOpinion();
+    return (
     <div className="space-y-6">
       <section className="rpg-card p-5">
         <div className="flex justify-between items-start mb-4">
@@ -636,6 +679,59 @@ export default function App() {
             );
           })}
         </div>
+
+        <button
+          onClick={() => setShowCoachOpinion((v) => !v)}
+          className="w-full py-3 mt-4 rounded-xl bg-cyan-500/20 text-cyan-400 font-bold text-sm flex items-center justify-center gap-2"
+        >
+          🤖 {showCoachOpinion ? 'Ocultar opinión del coach' : 'Pedirle al coach su opinión del día'}
+        </button>
+
+        {showCoachOpinion && (
+          <section className="rpg-card p-5 mt-3 border-l-4 border-l-cyan-400">
+            <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold mb-2">Voz del coach</p>
+            <h3 className="font-heading font-bold text-lg mb-2">{opinion.title} · {opinion.pct}%</h3>
+            <p className="text-sm text-rpg-text-secondary leading-relaxed whitespace-pre-line">{opinion.message}</p>
+
+            {opinion.done.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] uppercase tracking-widest text-green-400 font-bold mb-1">Hoy hecho</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {opinion.done.map((h) => (
+                    <span key={h.id} className="text-xs bg-green-500/15 text-green-300 px-2 py-1 rounded-full">
+                      ✓ {h.icon} {h.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {opinion.pending.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">Aun pendiente</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {opinion.pending.map((h) => (
+                    <span key={h.id} className="text-xs bg-amber-500/15 text-amber-300 px-2 py-1 rounded-full">
+                      ○ {h.icon} {h.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {opinion.best && (
+              <p className="mt-3 text-xs text-rpg-text-secondary">
+                <span className="text-orange-400 font-bold">Tu fuerte:</span> {opinion.best.icon} {opinion.best.name} (racha {opinion.best.streak} días).
+              </p>
+            )}
+            {opinion.worst && (
+              <p className="mt-1 text-xs text-rpg-text-secondary">
+                <span className="text-amber-400 font-bold">Donde mas te cuesta:</span> {opinion.worst.icon} {opinion.worst.name}. Prueba a anclarla a algo que ya hagas.
+              </p>
+            )}
+            <p className="mt-3 text-xs italic text-rpg-text-secondary">
+              Plan para mañana: replica el orden de las misiones que ya cerraste hoy.
+            </p>
+          </section>
+        )}
       </section>
     </div>
   );
@@ -1179,6 +1275,5 @@ export default function App() {
       {showGuide && <GuideView open onClose={() => setShowGuide(false)} />}
     </div>
   );
-}// test
-// test 2
-// test 3
+}
+}
