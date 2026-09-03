@@ -1967,8 +1967,8 @@ function GoalDetailOverlay({
                         </div>
                       ))}
                       <p className="text-[9px] text-rpg-text-secondary leading-relaxed">
-                        Son tus notas: el coach te las recuerda al empezar. No cambian la lógica ni
-                        las métricas.
+                        El coach solo sugiere la SEÑAL (hazlo obvio); el resto del bucle
+                        ya lo cubrimos nosotros (anhelo con micro-pasos y mensajes; respuesta con tu plan y horarios; recompensa con XP, racha, ⭐ y 🌱).
                       </p>
                     </div>
                   )}

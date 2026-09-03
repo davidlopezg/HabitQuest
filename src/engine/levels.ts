@@ -235,22 +235,23 @@ export function templateOf(id: string): BehaviorTemplate | undefined {
 }
 
 /**
- * Estrategia recomendada por el coach para cada tipo de hábito (1 por hábito).
- * El usuario puede editarla, ampliarla o borrarla.
+ * Estrategia recomendada por el coach para cada tipo de hábito.
+ * El coach solo sugiere la SEÑAL (hazlo obvio) — el resto del bucle ya lo cubrimos
+ * nosotros: micro-pasos y UX (anhelo/respuesta) y XP/estrellas/consolidación (recompensa).
  */
 export const STRATEGY_TIPS: Partial<
   Record<string, { key: 'cue' | 'craving' | 'response' | 'reward'; text: string }>
 > = {
   walk: { key: 'cue', text: 'Deja las zapatillas a la vista: señal para salir en cuanto te levantes.' },
-  strength: { key: 'response', text: 'Prepara el material (o las pesas) la noche anterior: menos fricción al empezar.' },
-  mobility: { key: 'craving', text: 'Hazlo solo mientras oyes tu podcast o música favorita (fórmula de la tentación).' },
+  strength: { key: 'cue', text: 'Deja el material de pesas o la mochila preparada y a la vista la noche anterior.' },
+  mobility: { key: 'cue', text: 'Pon la esterilla o el vídeo de estiramientos a la vista.' },
   read: { key: 'cue', text: 'Deja el libro abierto encima de la mesa o en la mesilla de noche.' },
-  study: { key: 'response', text: 'Abre la app o el material antes y pon el móvil en modo avión.' },
-  mindfulness: { key: 'cue', text: 'Hazlo justo después de despertar, antes de tocar el móvil.' },
-  sleep_routine: { key: 'response', text: 'Carga el móvil fuera del dormitorio.' },
-  tidy: { key: 'response', text: 'Pon un temporizador de 5 min y empieza por una sola superficie.' },
-  cook: { key: 'response', text: 'Prepara o corta la verdura la noche anterior.' },
-  focus: { key: 'cue', text: 'Elige UNA tarea la noche anterior y apaga notificaciones al empezar.' },
+  study: { key: 'cue', text: 'Abre la app o el material y déjalos abiertos en la pantalla de inicio.' },
+  mindfulness: { key: 'cue', text: 'Justo después de despertar, antes de tocar el móvil.' },
+  sleep_routine: { key: 'cue', text: 'Carga el móvil fuera del dormitorio (fuera de vista).' },
+  tidy: { key: 'cue', text: 'Pon un temporizador a la vista (encimera o nota en el móvil).' },
+  cook: { key: 'cue', text: 'Pon las recetas o el menú de la semana a la vista en la nevera.' },
+  focus: { key: 'cue', text: 'Anota UNA sola tarea en un pósit y déjalo a la vista del escritorio.' },
   write: { key: 'cue', text: 'Deja el documento abierto con el cursor en la primera frase.' },
   supplements: { key: 'cue', text: 'Pon el bote junto al cepillo de dientes: no podrás olvidarlo.' },
 };
