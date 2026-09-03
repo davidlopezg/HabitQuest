@@ -631,14 +631,21 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setNotice({ icon: '🗑️', text: 'Objetivo eliminado. Puedes crear otro cuando quieras.' });
   }
 
-  /** Primera hora de ejecución del día para un objetivo (orden de la tarjeta). */
+  /** Primera hora de ejecución del día para un objetivo (orden de la tarjeta).
+   *  Lee del Behavior (no del plan) para que siempre refleje la hora que el
+   *  usuario acaba de editar, sin esperar a que el plan se regenere. */
   function goalHourOf(goalId: string): number {
-    const items = plan?.items.filter((i) => i.goalId === goalId) ?? [];
-    const fromPlan = items.filter((i) => i.status !== 'excused').map((i) => i.startMinute);
-    if (fromPlan.length > 0) return Math.min(...fromPlan);
     const mins = cs.behaviors
       .filter((b) => b.enabled && b.goalId === goalId)
-      .map((b) => b.startMinute ?? SLOT_DEFAULT_MIN[b.preferredSlots[0] ?? 'morning']);
+      .map((b) => {
+        // Prioridad al startMinute explícito del Behavior.
+        if (b.startMinute !== undefined) return b.startMinute;
+        // Si no tiene, usa el item del plan si existe (para horas auto-asignadas).
+        const it = plan?.items.find((i) => i.behaviorId === b.id);
+        if (it && it.status !== 'excused') return it.startMinute;
+        // Fallback: slot default.
+        return SLOT_DEFAULT_MIN[b.preferredSlots[0] ?? 'morning'];
+      });
     return mins.length > 0 ? Math.min(...mins) : Infinity;
   }
   const orderedGoals = [...activeGoals].sort((a, b) => goalHourOf(a.id) - goalHourOf(b.id));

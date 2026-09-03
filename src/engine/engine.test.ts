@@ -702,3 +702,21 @@ test('updateBehaviorTime (vía setCs + rebuildPlan): cambiar hora reordena el pl
   assert.equal(enItem2.startMinute, 7 * 60, 'study ahora debe estar a las 7:00');
   assert.ok(enItem2.startMinute < walkItem1.startMinute, 'study (7:00) debe ir antes que walk (9:00)');
 });
+
+test('regresión: cambiar hora del hábito 3° en slot morning actualiza el plan (no se queda con el offset del slot counter)', () => {
+  // Caso del usuario: 3 hábitos en morning, edita el 3° a 9:00.
+  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  let s = emptyState();
+  s.checkins.push(ck);
+  const out = decompose('Quiero cuidar mi aspecto', '2025-06-15');
+  s = applyDecomposed(s, out);
+  s = rebuildPlan(s, ck);
+  // El hábito está en morning (slot default). startMinute del item debe ser 540.
+  const b = s.behaviors[0];
+  assert.equal(s.plans['2025-06-15'].items[0].startMinute, 540);
+  // Editamos a 9:00 (540) explícitamente.
+  s.behaviors = s.behaviors.map((x) => x.id === b.id ? { ...x, startMinute: 540 } : x);
+  s = rebuildPlan(s, ck);
+  assert.equal(s.plans['2025-06-15'].items[0].startMinute, 540);
+  assert.notEqual(s.plans['2025-06-15'].items[0].startMinute, 590); // nunca debe volver al offset del slot counter
+});
