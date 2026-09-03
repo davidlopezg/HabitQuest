@@ -20,6 +20,7 @@ import { planDay } from './planner.ts';
 export * from './types.ts';
 export * from './habitadd.ts';
 export * from './schedule.ts';
+export * from './ritual.ts';
 export * from './time.ts';
 export * from './levels.ts';
 export * from './checkin.ts';

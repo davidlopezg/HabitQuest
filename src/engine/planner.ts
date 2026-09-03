@@ -19,6 +19,7 @@ import type {
 import { dailyBudgetMinutes, MODE_COACH_NOTE, MODE_HEADLINE, modeForCheckin } from './checkin.ts';
 import { levelDef, minimalLabel } from './levels.ts';
 import { scheduledOn } from './schedule.ts';
+import { ritualStepFor } from './ritual.ts';
 import { toHHMM } from './time.ts';
 
 export const SLOT_ORDER: DaySlot[] = ['morning', 'midday', 'afternoon', 'night'];
@@ -127,11 +128,13 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
       goalId: b.goalId,
       slot,
       startMinute: Math.min(startMinute, 1420),
-      label: isBinary
-        ? b.name
-        : version === 'full'
-          ? `${b.name} — ${minutes} min`
-          : minimalLabel(b),
+      label: ritualStepFor(b)
+        ? ritualStepFor(b)!
+        : isBinary
+          ? b.name
+          : version === 'full'
+            ? `${b.name} — ${minutes} min`
+            : minimalLabel(b),
       version,
       minutes,
       priority: prio,

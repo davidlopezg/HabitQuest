@@ -1818,22 +1818,36 @@ function GoalDetailOverlay({
                   </>
                 )}
 
-                {/* Micro-pasos de arranque (hábitos de alta resistencia) */}
-                {!isBinary && ritual.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">🧊 Arranque en micro-pasos</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {ritual.map((s, i) => (
-                        <span key={i} className="text-[10px] px-2 py-1 rounded-lg bg-cyan-500/10 text-cyan-200/80">
-                          {i + 1}) {s}
-                        </span>
-                      ))}
+                {/* Micro-paso activo (sincronizado con AHORA/Después) */}
+                {!isBinary && ritual.length > 0 && (() => {
+                  const activeIdx = ((b.currentLevel - 1) % ritual.length + ritual.length) % ritual.length;
+                  const activeStep = ritual[activeIdx];
+                  return (
+                    <div className="mt-3">
+                      <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">🧊 Micro-paso de arranque (nivel {b.currentLevel} → paso {activeIdx + 1}/{ritual.length})</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ritual.map((s, i) => {
+                          const active = i === activeIdx;
+                          return (
+                            <span
+                              key={i}
+                              className={`text-[10px] px-2 py-1 rounded-lg ${
+                                active
+                                  ? 'bg-cyan-500/30 ring-1 ring-cyan-400 text-cyan-100 font-bold'
+                                  : 'bg-white/5 text-rpg-text-secondary opacity-60'
+                              }`}
+                            >
+                              {i + 1}) {s}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1 text-[9px] text-rpg-text-secondary">
+                        El plan de hoy muestra exactamente este paso. Al subir de nivel, el micro-paso cambia.
+                      </p>
                     </div>
-                    <p className="mt-1 text-[9px] text-rpg-text-secondary">
-                      Basta con el primer paso para contar como hecho (versión mínima).
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Agenda: en qué días aplica */}
                 <div className="mt-3 pt-3 border-t border-white/5">

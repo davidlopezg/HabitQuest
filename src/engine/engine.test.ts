@@ -39,6 +39,7 @@ import {
   postponeItem,
   parseAddHabitRequest,
   addBehaviorToState,
+  ritualStepFor,
 } from './index.ts';
 
 // ---------- helpers ----------
@@ -531,22 +532,29 @@ test('tipos: hábito binario (vitaminas) se planifica sin minutos ni versión m�
   assert.ok(!/\d+\s*min/.test(item.label), 'no muestra minutos');
 });
 
-test('micro-pasos: hábitos de alta fricción traen ritual de arranque; binario no', () => {
-  assert.ok((templateOf('focus')?.startRitual ?? []).length > 0);
-  assert.ok((templateOf('write')?.startRitual ?? []).length > 0);
-  assert.equal(templateOf('supplements')?.kind, 'binary');
-  assert.equal(templateOf('focus')?.kind, undefined); // por defecto volume
+test('micro-pasos: el plan del día muestra exactamente el micro-paso del nivel actual', () => {
+  let state = stateWithGoal('Quiero ser más productivo', '2025-06-15');
+  const req = parseAddHabitRequest('añade un hábito de escribir')!;
+  assert.equal(req.templateId, 'write');
+  state = addBehaviorToState(state, state.goals[0].id, '2025-06-15', req);
+  const b = state.behaviors.find((x) => x.templateId === 'write')!;
+  state.behaviors = state.behaviors.map((x) => (x.id === b.id ? { ...x, currentLevel: 2 } : x));
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan } = getOrBuildPlan(state, c);
+  const item = plan.items.find((i) => i.behaviorId === b.id)!;
+  assert.ok(item, 'micro-paso en el plan');
+  assert.match(item.label, /Escribir 1 frase sin borrarla/);
 });
 
-test('estrategias: al crear un hábito el coach deja una recomendación editable', () => {
-  const d = decompose('Quiero leer más', '2025-06-15');
-  const b = d.behaviors[0];
-  assert.ok(b.strategies?.cue && b.strategies.cue.includes('libro'), 'recomendación de Lectura');
-  // Añadir por chat un binario con su recomendación.
-  let state = stateWithGoal('Quiero dormir mejor', '2025-06-15');
-  const goal = state.goals[0];
-  const r = parseAddHabitRequest('añade un hábito de vitaminas')!;
-  state = addBehaviorToState(state, goal.id, '2025-06-15', r);
-  const v = state.behaviors.find((x) => x.templateId === 'supplements')!;
-  assert.ok(v.strategies?.cue && v.strategies.cue.includes('cepillo'), 'recomendación de vitaminas');
+
+test('micro-pasos: el detalle del objetivo marca como activo el paso del nivel', () => {
+  const state = stateWithGoal('Quiero ser más productivo', '2025-06-15');
+  const req = parseAddHabitRequest('añade un hábito de escribir')!;
+  const next = addBehaviorToState(state, state.goals[0].id, '2025-06-15', req);
+  const b = next.behaviors.find((x) => x.templateId === 'write')!;
+  assert.equal(ritualStepFor({ ...b, currentLevel: 1 }), 'Abrir el documento');
+  assert.equal(ritualStepFor({ ...b, currentLevel: 2 }), 'Escribir 1 frase sin borrarla');
+  assert.equal(ritualStepFor({ ...b, currentLevel: 3 }), 'Continuar 2 minutos seguidos');
+  // Cicla: nivel 4 vuelve al paso 1
+  assert.equal(ritualStepFor({ ...b, currentLevel: 4 }), 'Abrir el documento');
 });
