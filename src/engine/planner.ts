@@ -18,6 +18,7 @@ import type {
 } from './types.ts';
 import { dailyBudgetMinutes, MODE_COACH_NOTE, MODE_HEADLINE, modeForCheckin } from './checkin.ts';
 import { levelDef, minimalLabel } from './levels.ts';
+import { scheduledOn } from './schedule.ts';
 import { toHHMM } from './time.ts';
 
 export const SLOT_ORDER: DaySlot[] = ['morning', 'midday', 'afternoon', 'night'];
@@ -55,7 +56,12 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
 
   const activeGoals = state.goals.filter((g) => g.status === 'active');
   const candidates = state.behaviors
-    .filter((b) => b.enabled && activeGoals.some((g) => g.id === b.goalId))
+    .filter(
+      (b) =>
+        b.enabled &&
+        activeGoals.some((g) => g.id === b.goalId) &&
+        scheduledOn(state.logs, b, date),
+    )
     .sort(
       (a, b) =>
         activeGoals.findIndex((g) => g.id === a.goalId) -
@@ -104,8 +110,10 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
   for (const { b, prio } of drafts) {
     if (!keepPriority[mode].includes(prio)) continue;
     const def = levelDef(b)!;
-    const version = versionFor(b, prio);
-    const minutes = version === 'full' ? def.minutes : def.minimal!;
+    const isBinary = (b.kind ?? 'volume') === 'binary';
+    const version = (isBinary ? 'full' : versionFor(b, prio)) as 'full' | 'minimal';
+    // Binarios: se marcan o no; usan 1 min nominal para el presupuesto del plan.
+    const minutes = isBinary ? 1 : version === 'full' ? def.minutes : def.minimal!;
     if (used + minutes + 2 > budget) continue; // nunca planes imposibles
     const slot = b.preferredSlots[0] ?? 'morning';
     slotCounters[slot]++;
@@ -119,7 +127,11 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
       goalId: b.goalId,
       slot,
       startMinute: Math.min(startMinute, 1420),
-      label: version === 'full' ? `${b.name} — ${minutes} min` : minimalLabel(b),
+      label: isBinary
+        ? b.name
+        : version === 'full'
+          ? `${b.name} — ${minutes} min`
+          : minimalLabel(b),
       version,
       minutes,
       priority: prio,

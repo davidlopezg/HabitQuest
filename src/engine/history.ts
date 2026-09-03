@@ -10,7 +10,8 @@
  */
 
 import type { Behavior, BehaviorLogEntry, DayMode, ReasonCode } from './types.ts';
-import { addDays, diffDays } from './time.ts';
+import { addDays } from './time.ts';
+import { scheduledOn } from './schedule.ts';
 
 export interface AdherenceSlice {
   eligible: number; // días elegibles (desde la introducción) en la ventana
@@ -44,8 +45,9 @@ export function logOn(
 }
 
 /**
- * Adherencia en una ventana de N días naturales terminando en `end`.
- * Los días anteriores a la introducción del comportamiento no cuentan.
+ * Adherencia en una ventana de N días terminando en `end`.
+ * Solo cuentan los días en los que el hábito estaba programado (agenda):
+ * un día sin programar no se castiga ni se premia.
  */
 export function adherence(
   logs: BehaviorLogEntry[],
@@ -55,11 +57,14 @@ export function adherence(
 ): AdherenceSlice {
   const from = addDays(end, -(days - 1));
   const start = behavior.introducedAt > from ? behavior.introducedAt : from;
-  const entries = logsBetween(logs, behavior.id, start, end);
-  const eligible = Math.max(0, diffDays(start, end) + 1);
 
-  let full = 0, minimal = 0, excused = 0, missed = 0;
-  for (const e of entries) {
+  let eligible = 0, full = 0, minimal = 0, excused = 0, missed = 0;
+  // Ascendente para que la cuota semanal se evalúe correctamente.
+  for (let key = start; key <= end; key = addDays(key, 1)) {
+    if (!scheduledOn(logs, behavior, key)) continue;
+    eligible++;
+    const e = logOn(logs, behavior.id, key);
+    if (!e) { missed++; continue; }
     if (e.kind === 'full') full++;
     else if (e.kind === 'minimal') minimal++;
     else if (e.kind === 'excused') excused++;
@@ -84,10 +89,11 @@ export function consistency(
 }
 
 /**
- * Racha actual hasta `end` (inclusive).
+ * Racha actual hasta `end` (inclusive). Respeta la agenda: los días no
+ * programados se saltan (no rompen ni suman).
  * - full/minimal: continúa.
  * - excused: no rompe (neutral), con un tope de 3 seguidos para no abusar.
- * - miss o día sin registro (siendo elegible): rompe.
+ * - miss o día sin registro (siendo programado): rompe.
  */
 export function streakDays(
   logs: BehaviorLogEntry[],
@@ -100,6 +106,7 @@ export function streakDays(
   for (let d = 0; ; d++) {
     const key = addDays(end, -d);
     if (key < since) break;
+    if (!scheduledOn(logs, behavior, key)) continue;
     const e = logOn(logs, behavior.id, key);
     if (e && (e.kind === 'full' || e.kind === 'minimal')) {
       streak++;
@@ -108,7 +115,7 @@ export function streakDays(
       if (neutral >= 3) break;
       neutral++;
     } else {
-      break; // miss o sin registro
+      break; // miss o sin registro en un día programado
     }
   }
   return streak;

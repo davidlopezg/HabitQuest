@@ -65,8 +65,11 @@ const SECTIONS: Section[] = [
       ['Modo normal', 'Plan estándar.'],
       ['Modo mantenimiento', 'Solo versiones mínimas.'],
       ['Modo recuperación', 'Día difícil: solo lo esencial, en mínimo.'],
+      ['Tipos de hábito', 'Volumen (leer 10 min: hacer 5 es éxito parcial) vs Sí/No (vitaminas: se hace o no). Se distingue en su pantalla de fases.'],
+      ['Micro-pasos de arranque', 'Escribir, estudiar o el trabajo profundo se dividen en pasos invisibles (“abrir el documento, escribir 1 frase…”) para romper la resistencia al empezar.'],
+      ['Agenda', 'Configura “solo L–V”, días sueltos o “N veces/semana”. Las métricas solo cuentan los días programados: el sábado de un hábito L–V no penaliza.'],
     ],
-    example: 'Día con reuniones → "Me ha surgido una reunión". El coach traslada la tarea a un hueco libre o la reduce a 2 min. Nunca un "fracaso".',
+    example: 'Día con reuniones → “Me ha surgido una reunión”. El coach traslada la tarea a un hueco libre o la reduce a 2 min. Nunca un “fracaso”.',
   },
   {
     id: 'nopuedo',

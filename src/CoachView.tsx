@@ -14,6 +14,7 @@ import { CheckCircle2, Circle, Clock, Flame, MessageCircle, Send, X, Zap } from 
 import type {
   Behavior,
   BehaviorLogEntry,
+  BehaviorSchedule,
   CoachCounters,
   CoachState,
   DayCheckIn,
@@ -507,6 +508,8 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
       introducedAt: today,
       currentLevel: 1,
       preferredSlots: t.slots,
+      kind: t.kind,
+      startRitual: t.startRitual,
     };
     let next: CoachState = {
       ...cs,
@@ -523,8 +526,11 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setNotice({ icon: '🌱', text: `Nuevo hábito: ${t.name}. Nivel 1 — objetivo mínimo. Sin prisa.` });
   }
 
-  /** Cambia franja/hora de un comportamiento y replanifica HOY conservando lo hecho. */
-  function updateBehaviorTime(id: string, patch: { slot?: DaySlot; startMinute?: number }) {
+  /** Cambia franja/hora/agenda de un comportamiento y replanifica HOY conservando lo hecho. */
+  function updateBehaviorTime(
+    id: string,
+    patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
+  ) {
     setCs((prev) => {
       let s: CoachState = {
         ...prev,
@@ -541,6 +547,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
                     : patch.startMinute !== undefined
                       ? Math.round(patch.startMinute)
                       : b.startMinute,
+                schedule: 'schedule' in patch ? patch.schedule : b.schedule,
               }
             : b,
         ),
@@ -1158,7 +1165,9 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
   }
   const def = behavior ? levelDef(behavior) : undefined;
   const minimal = def?.minimal ?? Math.max(1, Math.round(item.minutes * 0.2));
-  const canMinimal = item.version === 'full' && minimal < item.minutes;
+  const isBinary = behavior?.kind === 'binary';
+  const ritual = behavior?.startRitual ?? [];
+  const canMinimal = item.version === 'full' && minimal < item.minutes && !isBinary;
 
   return (
     <div className={open ? 'mt-3' : ''}>
@@ -1182,12 +1191,17 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
       )}
       {open && (
         <div className="grid gap-2">
+          {!isBinary && ritual.length > 0 && (
+            <div className="text-[10px] text-rpg-text-secondary leading-relaxed px-1">
+              🧊 Si cuesta arrancar: 1) {ritual[0]} 2) {ritual[1] ?? 'seguir'} 3) {ritual[2] ?? 'listo'}.
+            </div>
+          )}
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => onFinish(item, item.minutes)}
             className="py-2.5 bg-green-500/20 text-green-300 rounded-xl font-semibold text-sm"
           >
-            ✅ Lo he hecho · {item.minutes} min
+            {isBinary ? '✅ Hecho (sí/no)' : `✅ Lo he hecho · ${item.minutes} min`}
           </motion.button>
           {canMinimal && (
             <motion.button
@@ -1195,7 +1209,9 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
               onClick={() => onFinish(item, minimal)}
               className="py-2.5 bg-amber-500/15 text-amber-300 rounded-xl font-semibold text-sm"
             >
-              ⏱️ Solo el mínimo · {minimal} min
+              {ritual.length > 0
+                ? `⏱️ Solo arrancar: ${ritual[0].toLowerCase()} · ${minimal} min`
+                : `⏱️ Solo el mínimo · ${minimal} min`}
             </motion.button>
           )}
           <motion.button
@@ -1535,7 +1551,10 @@ interface GoalDetailProps {
   today: string;
   onClose: () => void;
   onIntroduce: (goalId: string) => void;
-  onEditBehavior: (id: string, patch: { slot?: DaySlot; startMinute?: number }) => void;
+  onEditBehavior: (
+    id: string,
+    patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
+  ) => void;
   onDelete: (goalId: string) => void;
   canIntroduce: boolean;
 }
@@ -1616,7 +1635,9 @@ function GoalDetailOverlay({
             const a7 = Math.round(adherence(logs, b, today, 7).rate * 100);
             const a30 = Math.round(adherence(logs, b, today, 30).rate * 100);
             const streak = streakDays(logs, b, today);
-            const { done, need } = levelProgress(b, logs, today);
+            const { done, need, window: win } = levelProgress(b, logs, today);
+            const isBinary = (b.kind ?? 'volume') === 'binary';
+            const ritual = b.startRitual ?? [];
             const consolidated = counters.consolidated.includes(b.id);
             const pct = Math.min(100, Math.round((done / need) * 100));
 
@@ -1627,15 +1648,26 @@ function GoalDetailOverlay({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-heading font-bold text-lg">{b.name}</h4>
+                      {isBinary ? (
+                        <span className="text-[9px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full font-bold uppercase">✓ Sí/No</span>
+                      ) : (
+                        <span className="text-[9px] bg-white/5 text-rpg-text-secondary px-2 py-0.5 rounded-full font-bold uppercase">📈 Volumen</span>
+                      )}
                       {consolidated && (
                         <span className="text-[9px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full font-bold uppercase">
                           🌱 consolidado
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-rpg-text-secondary">
-                      Nivel {b.currentLevel} · objetivo {def.label ?? `${def.minutes} min`} · mín. {def.minimal} min
-                    </p>
+                    {isBinary ? (
+                      <p className="text-xs text-rpg-text-secondary">
+                        Se completa o no · sin medir volumen.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-rpg-text-secondary">
+                        Nivel {b.currentLevel} · objetivo {def.label ?? `${def.minutes} min`} · mín. {def.minimal} min
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1644,8 +1676,9 @@ function GoalDetailOverlay({
                   <div className="mt-3">
                     <div className="flex justify-between text-[10px] text-rpg-text-secondary mb-1">
                       <span>
-                        Para subir a nivel {b.currentLevel + 1}
-                        {nextDef ? ` (${nextDef.minutes} min)` : ''}: {done}/{need} días completos
+                        {isBinary
+                          ? `Estabilidad: ${done}/${need} hechos en los últimos ${win} días`
+                          : `Para subir a nivel ${b.currentLevel + 1}${nextDef ? ` (${nextDef.minutes} min)` : ''}: ${done}/${need} días completos`}
                       </span>
                       <span>{pct}%</span>
                     </div>
@@ -1679,30 +1712,116 @@ function GoalDetailOverlay({
                   </div>
                 </div>
 
-                {/* Escalera de niveles */}
-                <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
-                  Fases ({ladder.length})
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ladder.map((lv) => {
-                    const passed = lv.level < b.currentLevel;
-                    const current = lv.level === b.currentLevel;
-                    return (
-                      <span
-                        key={lv.level}
-                        className={`text-[10px] px-2 py-1 rounded-lg ${
-                          current
-                            ? 'bg-cyan-500/25 ring-1 ring-cyan-400 text-cyan-100 font-bold'
-                            : passed
-                              ? 'bg-green-500/10 text-green-300/70'
-                              : 'bg-white/5 text-rpg-text-secondary'
-                        }`}
-                        title={lv.label ?? `${lv.minutes} min`}
-                      >
-                        {passed ? '✓' : current ? '●' : '·'} {lv.minutes} min
-                      </span>
-                    );
-                  })}
+                {/* Fases: solo para hábitos de volumen */}
+                {isBinary ? (
+                  <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
+                    Sin fases: cada día cuenta igual (hecho o no hecho).
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
+                      Fases ({ladder.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ladder.map((lv) => {
+                        const passed = lv.level < b.currentLevel;
+                        const current = lv.level === b.currentLevel;
+                        return (
+                          <span
+                            key={lv.level}
+                            className={`text-[10px] px-2 py-1 rounded-lg ${
+                              current
+                                ? 'bg-cyan-500/25 ring-1 ring-cyan-400 text-cyan-100 font-bold'
+                                : passed
+                                  ? 'bg-green-500/10 text-green-300/70'
+                                  : 'bg-white/5 text-rpg-text-secondary'
+                            }`}
+                            title={lv.label ?? `${lv.minutes} min`}
+                          >
+                            {passed ? '✓' : current ? '●' : '·'} {lv.minutes} min
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {/* Micro-pasos de arranque (hábitos de alta resistencia) */}
+                {!isBinary && ritual.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">🧊 Arranque en micro-pasos</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ritual.map((s, i) => (
+                        <span key={i} className="text-[10px] px-2 py-1 rounded-lg bg-cyan-500/10 text-cyan-200/80">
+                          {i + 1}) {s}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-[9px] text-rpg-text-secondary">
+                      Basta con el primer paso para contar como hecho (versión mínima).
+                    </p>
+                  </div>
+                )}
+
+                {/* Agenda: en qué días aplica */}
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">📅 Agenda</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => onEditBehavior(b.id, { schedule: undefined })}
+                      className={`text-[10px] px-2 py-1 rounded-lg ${!b.schedule ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
+                    >
+                      Todos los días
+                    </button>
+                    <button
+                      onClick={() => onEditBehavior(b.id, { schedule: { type: 'days', days: b.schedule?.type === 'days' ? (b.schedule.days ?? []) : [1, 3, 5] } })}
+                      className={`text-[10px] px-2 py-1 rounded-lg ${b.schedule?.type === 'days' ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
+                    >
+                      Días concretos
+                    </button>
+                    <button
+                      onClick={() => onEditBehavior(b.id, { schedule: { type: 'weekly', timesPerWeek: b.schedule?.type === 'weekly' ? (b.schedule.timesPerWeek ?? 3) : 3 } })}
+                      className={`text-[10px] px-2 py-1 rounded-lg ${b.schedule?.type === 'weekly' ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
+                    >
+                      N veces / semana
+                    </button>
+                  </div>
+                  {b.schedule?.type === 'days' && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map((code, wd) => {
+                        const on = (b.schedule?.days ?? []).includes(wd);
+                        return (
+                          <button
+                            key={wd}
+                            onClick={() => {
+                              const cur = b.schedule?.days ?? [];
+                              const next = on ? cur.filter((x) => x !== wd) : [...cur, wd];
+                              onEditBehavior(b.id, { schedule: { type: 'days', days: next } });
+                            }}
+                            className={`w-9 h-9 rounded-lg text-xs font-bold ${on ? 'bg-cyan-500/30 ring-1 ring-cyan-400 text-cyan-200' : 'bg-white/5 text-rpg-text-secondary'}`}
+                          >
+                            {code}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {b.schedule?.type === 'weekly' && (
+                    <div className="mt-1.5 flex gap-1 flex-wrap">
+                      {[1, 2, 3, 4, 5, 6].map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => onEditBehavior(b.id, { schedule: { type: 'weekly', timesPerWeek: n } })}
+                          className={`w-9 h-9 rounded-lg text-xs font-bold ${(b.schedule?.timesPerWeek ?? 3) === n ? 'bg-cyan-500/30 ring-1 ring-cyan-400 text-cyan-200' : 'bg-white/5 text-rpg-text-secondary'}`}
+                        >
+                          {n}×
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-[9px] text-rpg-text-secondary">
+                    Las métricas solo cuentan los días programados (un sábado de un hábito L–V no penaliza).
+                  </p>
                 </div>
 
                 {/* Horario: franja + hora exacta */}

@@ -7,13 +7,16 @@
  * regresión.
  */
 
-import type { Behavior, BehaviorCategory, BehaviorLevelDef, DaySlot } from './types.ts';
+import type { Behavior, BehaviorCategory, BehaviorKind, BehaviorLevelDef, DaySlot } from './types.ts';
 
 export interface BehaviorTemplate {
   id: string;
   name: string;
   icon: string;
   category: BehaviorCategory;
+  kind?: BehaviorKind; // 'volume' por defecto
+  /** Micro-pasos de arranque (romper la resistencia inicial al empezar). */
+  startRitual?: string[];
   slots: DaySlot[];
   levels: BehaviorLevelDef[];
   purpose: string; // texto del coach al presentarlo
@@ -100,6 +103,7 @@ export const CATALOG: BehaviorTemplate[] = [
     category: 'learning',
     slots: ['midday', 'night'],
     purpose: 'Empezaremos con 1 minuto diario en la app o el material. Sin más.',
+    startRitual: ['Abrir la app o el material', 'Hacer 1 ejercicio o leer 1 frase', 'Cerrar el móvil durante esos minutos'],
     levels: [
       { level: 1, minutes: 1, label: 'Abrir el material y hacer 1 ejercicio', need: 3, window: 5 },
       { level: 2, minutes: 2 },
@@ -185,6 +189,7 @@ export const CATALOG: BehaviorTemplate[] = [
     category: 'productivity',
     slots: ['morning', 'midday', 'afternoon'],
     purpose: 'Bloques de concentración con un único objetivo. Sin multitarea.',
+    startRitual: ['Elegir UNA sola tarea', 'Apagar notificaciones / modo avión', 'Trabajar 2 minutos seguidos'],
     levels: [
       { level: 1, minutes: 10, need: 3, window: 5 },
       { level: 2, minutes: 15 },
@@ -194,6 +199,34 @@ export const CATALOG: BehaviorTemplate[] = [
       { level: 6, minutes: 40 },
       { level: 7, minutes: 50 },
     ],
+  },
+  {
+    id: 'write',
+    name: 'Escribir',
+    icon: '✍️',
+    category: 'productivity',
+    slots: ['morning', 'afternoon'],
+    purpose: 'Escribir genera mucha resistencia: el truco es romper el hielo con micro-pasos.',
+    startRitual: ['Abrir el documento', 'Escribir 1 frase sin borrarla', 'Continuar 2 minutos seguidos'],
+    levels: [
+      { level: 1, minutes: 5, need: 3, window: 5 },
+      { level: 2, minutes: 10 },
+      { level: 3, minutes: 15 },
+      { level: 4, minutes: 20 },
+      { level: 5, minutes: 25 },
+      { level: 6, minutes: 30 },
+      { level: 7, minutes: 40 },
+    ],
+  },
+  {
+    id: 'supplements',
+    name: 'Vitaminas / suplementos',
+    icon: '💊',
+    category: 'nutrition',
+    kind: 'binary',
+    slots: ['morning'],
+    purpose: 'Es un hábito de sí/no: se toma o no se toma, sin medir volumen.',
+    levels: [{ level: 1, minutes: 1, label: 'Tomar vitaminas', need: 5, window: 7 }],
   },
 ];
 

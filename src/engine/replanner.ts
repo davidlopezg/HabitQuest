@@ -112,6 +112,14 @@ export function handleCannot(input: CannotInput): CoachReply {
 
   const def = levelDef(behavior)!;
   const laterMinutes = (SLOT_ORDER_MIN_PLUS(nowMinutes) as number[]) ?? [];
+  const isBinary = (behavior.kind ?? 'volume') === 'binary';
+  /** Hábitos de sí/no: no hay "versión mínima"; se hace o se deja para mañana. */
+  const binaryKeep = (): CoachReply => ({
+    action: 'kept_minimal',
+    message: `${behavior.name} es de sí/no: si hoy no puede ser, pulsa "dejarlo para mañana" y ya está (la racha sigue, no es un fallo).`,
+    plan,
+    events: [],
+  });
 
   switch (code) {
     case 'work':
@@ -132,6 +140,7 @@ export function handleCannot(input: CannotInput): CoachReply {
           events: [],
         };
       }
+      if (isBinary) return binaryKeep();
       item.version = 'minimal';
       item.minutes = def.minimal!;
       item.label = minimalLabel(behavior);
@@ -188,6 +197,7 @@ export function handleCannot(input: CannotInput): CoachReply {
           events: [],
         };
       }
+      if (isBinary) return binaryKeep();
       item.version = 'minimal';
       item.minutes = def.minimal!;
       item.label = minimalLabel(behavior);
@@ -199,6 +209,7 @@ export function handleCannot(input: CannotInput): CoachReply {
       };
     }
     case 'no_motivation': {
+      if (isBinary) return binaryKeep();
       item.version = 'minimal';
       item.minutes = def.minimal!;
       item.label = minimalLabel(behavior);
@@ -210,6 +221,7 @@ export function handleCannot(input: CannotInput): CoachReply {
       };
     }
     default: {
+      if (isBinary) return binaryKeep();
       item.version = 'minimal';
       item.minutes = def.minimal!;
       item.label = minimalLabel(behavior);

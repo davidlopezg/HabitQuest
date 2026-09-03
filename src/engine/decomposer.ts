@@ -149,6 +149,8 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
       introducedAt: today,
       currentLevel: 1,
       preferredSlots: t.slots,
+      kind: t.kind,
+      startRitual: t.startRitual,
     };
   });
 

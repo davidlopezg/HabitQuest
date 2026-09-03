@@ -496,3 +496,44 @@ test('plan: rebuildPlan al añadir un 2º objetivo conserva lo ya hecho y suma l
   const newB = state.behaviors.find((b) => b.goalId === d2.goal.id)!;
   assert.ok(plan2.items.some((i) => i.behaviorId === newB.id));
 });
+
+test('agenda: hábito L–V no se planifica el domingo y la adherencia no lo penaliza', () => {
+  let state = stateWithGoal('Quiero leer más', '2025-06-15'); // domingo
+  const b0 = state.behaviors[0];
+  state.behaviors = state.behaviors.map((x) =>
+    x.id === b0.id ? { ...x, schedule: { type: 'days', days: [1, 2, 3, 4, 5] } } : x,
+  );
+  const b = state.behaviors[0];
+  const cSun = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { state: s1, plan: pSun } = getOrBuildPlan(state, cSun);
+  state = s1;
+  assert.equal(pSun.items.filter((i) => i.behaviorId === b.id).length, 0, 'domingo no programado');
+  const cMon = ci({ date: '2025-06-16', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan: pMon } = getOrBuildPlan(state, cMon);
+  assert.ok(pMon.items.some((i) => i.behaviorId === b.id), 'lunes sí programado');
+  const a = adherence(state.logs, b, '2025-06-16', 3);
+  assert.equal(a.eligible, 1, 'solo cuenta el día programado (lunes)');
+});
+
+test('tipos: hábito binario (vitaminas) se planifica sin minutos ni versión mínima', () => {
+  let state = stateWithGoal('Quiero dormir mejor', '2025-06-15');
+  const goal = state.goals[0];
+  const r = parseAddHabitRequest('añade un hábito de vitaminas')!;
+  assert.equal(r.templateId, 'supplements');
+  state = addBehaviorToState(state, goal.id, '2025-06-15', r);
+  const b = state.behaviors.find((x) => x.templateId === 'supplements')!;
+  assert.equal(b.kind, 'binary');
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan: p } = getOrBuildPlan(state, c);
+  const item = p.items.find((i) => i.behaviorId === b.id)!;
+  assert.ok(item, 'el binario entra en el plan');
+  assert.equal(item.minutes, 1);
+  assert.ok(!/\d+\s*min/.test(item.label), 'no muestra minutos');
+});
+
+test('micro-pasos: hábitos de alta fricción traen ritual de arranque; binario no', () => {
+  assert.ok((templateOf('focus')?.startRitual ?? []).length > 0);
+  assert.ok((templateOf('write')?.startRitual ?? []).length > 0);
+  assert.equal(templateOf('supplements')?.kind, 'binary');
+  assert.equal(templateOf('focus')?.kind, undefined); // por defecto volume
+});

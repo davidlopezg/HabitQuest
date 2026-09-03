@@ -40,6 +40,25 @@ export type BehaviorCategory =
   | 'productivity'
   | 'other';
 
+/**
+ * Tipo de hábito:
+ * - 'volume': cuantificable (leer 10 min) — hacer 5 es éxito parcial, no fracaso.
+ * - 'binary': sí/no (tomar vitaminas) — se completa o no, sin medir volumen.
+ */
+export type BehaviorKind = 'volume' | 'binary';
+
+/**
+ * Reglas de cuándo aplica un hábito:
+ * - undefined (o type 'daily'): todos los días.
+ * - type 'days': solo los días de la semana indicados (0=domingo … 6=sábado).
+ * - type 'weekly': N veces por semana, sin importar qué días (el coach reparte).
+ */
+export interface BehaviorSchedule {
+  type?: 'days' | 'weekly';
+  days?: number[];
+  timesPerWeek?: number;
+}
+
 /** Un escalón de un comportamiento (Habit Installation). */
 export interface BehaviorLevelDef {
   level: number; // 1-based
@@ -61,6 +80,10 @@ export interface Behavior {
   enabled: boolean; // true = ya introducido en el plan diario
   order: number; // orden de introducción
   introducedAt: string; // fecha de alta (YYYY-MM-DD)
+  kind?: BehaviorKind; // por defecto 'volume'
+  /** Micro-pasos de arranque (romper la resistencia inicial al empezar). */
+  startRitual?: string[];
+  schedule?: BehaviorSchedule; // undefined = todos los días
   currentLevel: number; // nivel actual (1-based)
   preferredSlots: DaySlot[];
   /** Hora exacta preferida (minutos desde medianoche, ej: 540 = 09:00). Si no está definida, el plan usa la hora por defecto de la franja. */

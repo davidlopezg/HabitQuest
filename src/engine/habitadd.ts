@@ -39,6 +39,8 @@ const KEYWORD_MAP: { templateId: string; keywords: string[] }[] = [
   { templateId: 'tidy', keywords: ['ordenar', 'orden', 'limpiar', 'desorden', 'escritorio', 'casa'] },
   { templateId: 'cook', keywords: ['cocinar', 'cocina', 'comida', 'saludable', 'verduras', 'dieta'] },
   { templateId: 'focus', keywords: ['foco', 'concentración', 'trabajo profundo', 'productividad', 'bloque de trabajo', 'procastinar'] },
+  { templateId: 'write', keywords: ['escribir', 'escritura', 'redactar', 'journal', 'diario personal', 'guion'] },
+  { templateId: 'supplements', keywords: ['vitamina', 'vitaminas', 'suplemento', 'pastilla', 'pastillas', 'medicación', 'omega', 'magnesio'] },
 ];
 
 /** Área del objetivo con la que encaja cada plantilla (para elegir objetivo). */
@@ -53,6 +55,8 @@ export const TEMPLATE_AREA: Record<string, string[]> = {
   tidy: ['order'],
   cook: ['nutrition'],
   focus: ['productivity'],
+  write: ['productivity'],
+  supplements: ['nutrition'],
 };
 
 /** Detecta la petición "añade un hábito de X (a las H o por la H)". */
@@ -117,6 +121,8 @@ export function addBehaviorToState(
     currentLevel: 1,
     preferredSlots: req.slot ? [req.slot, ...tpl.slots.filter((s) => s !== req.slot)] : tpl.slots,
     startMinute: req.time,
+    kind: tpl.kind,
+    startRitual: tpl.startRitual,
   };
 
   return { ...state, behaviors: [...state.behaviors, behavior] };
