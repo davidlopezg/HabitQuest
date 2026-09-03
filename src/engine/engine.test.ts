@@ -720,3 +720,32 @@ test('regresión: cambiar hora del hábito 3° en slot morning actualiza el plan
   assert.equal(s.plans['2025-06-15'].items[0].startMinute, 540);
   assert.notEqual(s.plans['2025-06-15'].items[0].startMinute, 590); // nunca debe volver al offset del slot counter
 });
+
+test('regresión exacta del usuario: 4 objetivos, editar hora, verificar que se guarda', () => {
+  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  let s = emptyState();
+  s.checkins.push(ck);
+  // 4 objetivos (como el usuario)
+  for (const text of ['Quiero cuidar mi aspecto', 'Quiero aprender inglés', 'Quiero ser más productivo', 'Quiero dormir mejor']) {
+    s = applyDecomposed(s, decompose(text, '2025-06-15'));
+  }
+  s = rebuildPlan(s, ck);
+  // Estado inicial del primer hábito
+  const b = s.behaviors[0];
+  console.log('  B0 inicial:', { name: b.name, tpl: b.templateId, sm: b.startMinute, slot: b.preferredSlots[0] });
+  console.log('  B0 item inicial:', s.plans['2025-06-15'].items.find(i => i.behaviorId === b.id));
+  // Simular updateBehaviorTime con startMinute = 540 (9:00)
+  s = {
+    ...s,
+    behaviors: s.behaviors.map(x => x.id === b.id ? { ...x, startMinute: 540 } : x)
+  };
+  s = rebuildPlan(s, ck);
+  const bAfter = s.behaviors.find(x => x.id === b.id);
+  console.log('  B0 después:', { sm: bAfter.startMinute });
+  const itemAfter = s.plans['2025-06-15'].items.find(i => i.behaviorId === b.id);
+  console.log('  B0 item después:', itemAfter?.startMinute);
+  // El usuario reporta: b.startMinute = 540, item.startMinute = 590 (9:50)
+  // Vamos a verificar:
+  assert.equal(bAfter.startMinute, 540, 'b.startMinute debe ser 540');
+  assert.equal(itemAfter?.startMinute, 540, 'item.startMinute debe ser 540, no 590');
+});

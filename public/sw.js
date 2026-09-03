@@ -1,4 +1,4 @@
-const CACHE_NAME = 'habitquest-v3';
+const CACHE_NAME = 'habitquest-v4';
 const PRECACHE = ['/HabitQuest/', '/HabitQuest/index.html'];
 
 // Precarga mínima: solo el shell.
