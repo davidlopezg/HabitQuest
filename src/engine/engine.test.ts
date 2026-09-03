@@ -669,3 +669,36 @@ test('decomposer: objetivos custom generan micro-pasos específicos (heurística
   const r3 = decompose('Quiero ahorrar dinero', '2025-06-15');
   assert.match(r3.behaviors[0].startRitual?.[0] ?? '', /gast|€|dinero/i);
 });
+
+test('updateBehaviorTime (vía setCs + rebuildPlan): cambiar hora reordena el plan', () => {
+  // Reproduce lo que hace updateBehaviorTime en CoachView.tsx
+  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  let s = emptyState();
+  s.checkins.push(ck);
+  const o1 = decompose('Quiero aprender inglés', '2025-06-15');
+  const o2 = decompose('Quiero ponerme en forma', '2025-06-15');
+  s = applyDecomposed(s, o1);
+  s = applyDecomposed(s, o2);
+  s = rebuildPlan(s, ck);
+  // Asignar horas distintas
+  const en = s.behaviors.find((b) => b.templateId === 'study')!;
+  const walk = s.behaviors.find((b) => b.templateId === 'walk')!;
+  s.behaviors = s.behaviors.map((b) =>
+    b.id === en.id ? { ...b, startMinute: 18 * 60 } :
+    b.id === walk.id ? { ...b, startMinute: 9 * 60 } : b
+  );
+  s = rebuildPlan(s, ck);
+  const plan1 = s.plans['2025-06-15'];
+  const enItem1 = plan1.items.find((i) => i.behaviorId === en.id)!;
+  const walkItem1 = plan1.items.find((i) => i.behaviorId === walk.id)!;
+  assert.ok(walkItem1.startMinute < enItem1.startMinute, 'walk (9:00) debe ir antes que study (18:00)');
+  // Cambiar la hora de estudio a 7:00 (simula updateBehaviorTime)
+  s.behaviors = s.behaviors.map((b) =>
+    b.id === en.id ? { ...b, startMinute: 7 * 60 } : b
+  );
+  s = rebuildPlan(s, ck);
+  const plan2 = s.plans['2025-06-15'];
+  const enItem2 = plan2.items.find((i) => i.behaviorId === en.id)!;
+  assert.equal(enItem2.startMinute, 7 * 60, 'study ahora debe estar a las 7:00');
+  assert.ok(enItem2.startMinute < walkItem1.startMinute, 'study (7:00) debe ir antes que walk (9:00)');
+});
