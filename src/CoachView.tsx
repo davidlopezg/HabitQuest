@@ -22,6 +22,7 @@ import type {
   DayMode,
   DaySlot,
   Goal,
+  HabitStrategies,
   PlanItem,
   TimeAvailable,
 } from './engine/index.ts';
@@ -558,6 +559,14 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     });
   }
 
+  /** Guarda las estrategias del hábito (bucle Atomic Habits). No toca el plan. */
+  function updateBehaviorStrategies(id: string, strategies: HabitStrategies) {
+    setCs((prev) => ({
+      ...prev,
+      behaviors: prev.behaviors.map((b) => (b.id === id ? { ...b, strategies } : b)),
+    }));
+  }
+
   /** Elimina un objetivo y todo lo asociado (motor). */
   function deleteGoal(goalId: string) {
     let s = removeGoal(cs, goalId);
@@ -856,6 +865,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             today={today}
             onClose={() => setDetailGoalId(null)}
             onEditBehavior={updateBehaviorTime}
+            onEditStrategies={updateBehaviorStrategies}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
@@ -1167,6 +1177,7 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
   const minimal = def?.minimal ?? Math.max(1, Math.round(item.minutes * 0.2));
   const isBinary = behavior?.kind === 'binary';
   const ritual = behavior?.startRitual ?? [];
+  const st = behavior?.strategies;
   const canMinimal = item.version === 'full' && minimal < item.minutes && !isBinary;
 
   return (
@@ -1191,6 +1202,16 @@ function ItemActions({ item, behavior, open, onToggle, onFinish, onCannot, compa
       )}
       {open && (
         <div className="grid gap-2">
+          {!isBinary &&
+            st &&
+            [st.cue && `Señal: ${st.cue}`, st.craving && `Anhelo: ${st.craving}`]
+              .filter(Boolean)
+              .slice(0, 2)
+              .length > 0 && (
+              <div className="text-[10px] text-rpg-text-secondary leading-relaxed px-1">
+                🪝 {[st.cue && `Señal: ${st.cue}`, st.craving && `Anhelo: ${st.craving}`].filter(Boolean).slice(0, 2).join(' · ')}
+              </div>
+            )}
           {!isBinary && ritual.length > 0 && (
             <div className="text-[10px] text-rpg-text-secondary leading-relaxed px-1">
               🧊 Si cuesta arrancar: 1) {ritual[0]} 2) {ritual[1] ?? 'seguir'} 3) {ritual[2] ?? 'listo'}.
@@ -1543,6 +1564,18 @@ function CannotModal({
 
 // ---------- Detalle de objetivo: fases, niveles y adherencia ----------
 
+const STRATEGY_META: {
+  key: 'cue' | 'craving' | 'response' | 'reward';
+  emoji: string;
+  label: string;
+  ph: string;
+}[] = [
+  { key: 'cue', emoji: '👁️', label: 'Señal — hazlo obvio o invisible', ph: 'Ej: lo hago justo tras el café · o: el móvil se queda en otra habitación' },
+  { key: 'craving', emoji: '🔥', label: 'Anhelo — hazlo atractivo (o ve los costes)', ph: 'Ej: solo veo mi serie favorita mientras camino' },
+  { key: 'response', emoji: '⚡', label: 'Respuesta — baja la fricción (o súbela al mal hábito)', ph: 'Ej: preparo ropa y material la noche anterior' },
+  { key: 'reward', emoji: '🎁', label: 'Recompensa — satisfactoria o con rendición de cuentas', ph: 'Ej: 5 hechos = 1 capítulo extra · o: aviso a un amigo si fallo' },
+];
+
 interface GoalDetailProps {
   goal: Goal;
   behaviors: Behavior[];
@@ -1555,6 +1588,7 @@ interface GoalDetailProps {
     id: string,
     patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
   ) => void;
+  onEditStrategies: (id: string, strategies: HabitStrategies) => void;
   onDelete: (goalId: string) => void;
   canIntroduce: boolean;
 }
@@ -1584,10 +1618,12 @@ function GoalDetailOverlay({
   onClose,
   onIntroduce,
   onEditBehavior,
+  onEditStrategies,
   onDelete,
   canIntroduce,
 }: GoalDetailProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [strategyOpenId, setStrategyOpenId] = useState<string | null>(null);
   const pipelineTemplates = goal.pipeline
     .map((id) => CATALOG.find((t) => t.id === id))
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
@@ -1871,6 +1907,49 @@ function GoalDetailOverlay({
                   <p className="mt-1 text-[9px] text-rpg-text-secondary">
                     Cambios de horario se aplican hoy mismo (y de ahora en adelante).
                   </p>
+                </div>
+
+                {/* Estrategias del hábito (Atomic Habits, opcional y colapsado) */}
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <button
+                    onClick={() => setStrategyOpenId(strategyOpenId === b.id ? null : b.id)}
+                    className="w-full flex items-center justify-between text-left"
+                  >
+                    <span className="text-[10px] uppercase tracking-wider text-rpg-text-secondary">
+                      🌀 Estrategias del hábito
+                      {Object.values(b.strategies ?? {}).some(Boolean) && (
+                        <span className="ml-1.5 text-green-400">· configurada</span>
+                      )}
+                    </span>
+                    <span className="text-cyan-300 text-sm">{strategyOpenId === b.id ? '−' : '+'}</span>
+                  </button>
+                  {strategyOpenId === b.id && (
+                    <div className="mt-2 space-y-2">
+                      {STRATEGY_META.map((f) => (
+                        <div key={f.key}>
+                          <label className="block text-[9px] uppercase tracking-wider text-rpg-text-secondary mb-0.5">
+                            {f.emoji} {f.label}
+                          </label>
+                          <input
+                            type="text"
+                            value={(b.strategies ?? {})[f.key] ?? ''}
+                            onChange={(e) =>
+                              onEditStrategies(b.id, {
+                                ...(b.strategies ?? {}),
+                                [f.key]: e.target.value,
+                              })
+                            }
+                            placeholder={f.ph}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs placeholder:text-rpg-text-secondary outline-none focus:border-cyan-400/50"
+                          />
+                        </div>
+                      ))}
+                      <p className="text-[9px] text-rpg-text-secondary leading-relaxed">
+                        Son tus notas: el coach te las recuerda al empezar. No cambian la lógica ni
+                        las métricas.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             );

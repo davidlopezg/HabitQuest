@@ -59,6 +59,21 @@ export interface BehaviorSchedule {
   timesPerWeek?: number;
 }
 
+/**
+ * Estrategias del hábito basadas en el bucle de Atomic Habits (todo opcional).
+ * Son notas del propio usuario: NO afectan a la lógica ni a las métricas.
+ *  - cue:      Señal — hacerlo obvio / invisible (dónde/cuándo aparece o se retira).
+ *  - craving:  Anhelo — hacerlo atractivo (fórmula de la tentación) o ver sus costes.
+ *  - response: Respuesta — reducir fricción / aumentarla al mal hábito.
+ *  - reward:   Recompensa — hacerla satisfactoria o rendir cuentas (socio).
+ */
+export interface HabitStrategies {
+  cue?: string;
+  craving?: string;
+  response?: string;
+  reward?: string;
+}
+
 /** Un escalón de un comportamiento (Habit Installation). */
 export interface BehaviorLevelDef {
   level: number; // 1-based
@@ -84,6 +99,7 @@ export interface Behavior {
   /** Micro-pasos de arranque (romper la resistencia inicial al empezar). */
   startRitual?: string[];
   schedule?: BehaviorSchedule; // undefined = todos los días
+  strategies?: HabitStrategies; // bucle Atomic Habits (opcional)
   currentLevel: number; // nivel actual (1-based)
   preferredSlots: DaySlot[];
   /** Hora exacta preferida (minutos desde medianoche, ej: 540 = 09:00). Si no está definida, el plan usa la hora por defecto de la franja. */
