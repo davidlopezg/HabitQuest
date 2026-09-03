@@ -1144,36 +1144,6 @@ function PlanBody(props: PlanBodyProps) {
           </p>
         </motion.section>
       )}
-
-      {/* Misiones manuales (modo libre) integradas en el día */}
-      {manualMissions && manualMissions.items.length > 0 && (
-        <section className="rpg-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-heading font-bold text-sm">🧰 Misiones manuales</h4>
-            <span className="text-[9px] uppercase tracking-wider text-rpg-text-secondary">modo libre</span>
-          </div>
-          <div className="space-y-1.5">
-            {manualMissions.items.map((it) => (
-              <button
-                key={it.id}
-                onClick={() => manualMissions.onToggle(it.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left ${it.done ? 'bg-white/5 opacity-60' : 'bg-black/20'}`}
-              >
-                <span className="text-lg">{it.icon}</span>
-                <span className={`flex-1 text-xs ${it.done ? 'line-through opacity-70' : ''}`}>{it.name}</span>
-                {it.done ? (
-                  <CheckCircle2 size={16} className="text-green-400 shrink-0" />
-                ) : (
-                  <Circle size={16} className="text-white/20 shrink-0" />
-                )}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-[10px] text-rpg-text-secondary">
-            Van a tu modo manual (Inicio). Los hábitos del coach arriba sí se adaptan a ti.
-          </p>
-        </section>
-      )}
     </>
   );
 }
