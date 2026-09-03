@@ -558,3 +558,12 @@ test('micro-pasos: el detalle del objetivo marca como activo el paso del nivel',
   // Cicla: nivel 4 vuelve al paso 1
   assert.equal(ritualStepFor({ ...b, currentLevel: 4 }), 'Abrir el documento');
 });
+
+test('planner: muestra el label del nivel (no "Nombre — X min")', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-15');
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { plan } = getOrBuildPlan(state, c);
+  const item = plan.items[0];
+  assert.match(item.label, /Abrir el libro o la app/);
+  assert.ok(!/Lectura\s*—\s*\d+/.test(item.label));
+});
