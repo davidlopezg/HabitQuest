@@ -91,6 +91,7 @@ function loadState(): CoachState {
       checkins,
       plans,
       // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
+      // También re-detectar el templateId correcto si el hábito tiene uno obsoleto.
       behaviors: behaviorsRaw.map((b) => {
         const tip = STRATEGY_TIPS[b.templateId];
         const own = b.strategies && Object.values(b.strategies).some(Boolean);
@@ -100,10 +101,22 @@ function loadState(): CoachState {
         } else {
           fixed = { ...fixed, strategies: { [tip.key]: tip.text } as HabitStrategies };
         }
-        // Migración: si un hábito fue creado con bug (templateId 'walk' pero nombre custom),
-        // corregir a 'custom' para que use los micro-pasos incrementales correctos.
-        if (fixed.templateId === 'walk' && fixed.name && fixed.name !== 'Caminar') {
-          fixed = { ...fixed, templateId: 'custom' };
+        // Migración: si el hábito fue creado con un templateId incorrecto
+        // (bug histórico: 'walk' para cualquier objetivo no reconocido),
+        // re-detectar el preset correcto a partir del goal asociado.
+        const goal = (parsed as CoachState).goals?.find?.((g) => g.id === fixed.goalId);
+        if (goal && goal.raw) {
+          try {
+            const fresh = decompose(goal.raw, '2025-06-15');
+            const expectedTpl = fresh.behaviors[0]?.templateId;
+            if (expectedTpl && fixed.templateId !== expectedTpl) {
+              // Si los templateIds no coinciden, es probable que el hábito esté
+              // usando un preset antiguo. Lo actualizamos.
+              fixed = { ...fixed, templateId: expectedTpl };
+            }
+          } catch {
+            /* ignore — fallback al templateId existente */
+          }
         }
         return fixed;
       }),
