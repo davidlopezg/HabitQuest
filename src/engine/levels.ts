@@ -323,10 +323,18 @@ export function resolveLevels(b: Behavior): BehaviorLevelDef[] {
   const src = b.customLevels && b.customLevels.length > 0 ? b.customLevels : templateOf(b.templateId)?.levels ?? [];
   const need = (l: number, x?: number) => x ?? (l === 1 ? FIRST_NEED : DEFAULT_NEED);
   const window = (l: number, x?: number) => x ?? (l === 1 ? FIRST_WINDOW : DEFAULT_WINDOW);
-  return src.map((lv) => ({
+  // Para hábitos custom/reduce, si el Behavior tiene micro-pasos personalizados
+  // (startRitual), los usamos como labels en lugar de los genéricos del catálogo.
+  const dynamicLabel =
+    (b.templateId === 'custom' || b.templateId === 'reduce') &&
+    b.startRitual &&
+    b.startRitual.length > 0
+      ? b.startRitual
+      : null;
+  return src.map((lv, idx) => ({
     level: lv.level,
     minutes: lv.minutes,
-    label: lv.label,
+    label: dynamicLabel ? dynamicLabel[idx % dynamicLabel.length] : lv.label,
     minimal: lv.minimal ?? Math.max(1, Math.round(lv.minutes * 0.2)),
     need: need(lv.level, lv.need),
     window: window(lv.level, lv.window),
