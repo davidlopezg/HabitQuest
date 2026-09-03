@@ -1108,9 +1108,9 @@ export default function App() {
       </AnimatePresence>
 
       {/* Versión visible en todas las pantallas (arriba de la nav) */}
-      <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-5 py-1 flex justify-between items-center text-[9px] text-rpg-text-secondary z-40 pointer-events-none">
-        <span>HabitQuest</span>
-        <span className="font-mono">{APP_VERSION}</span>
+      <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-5 py-1 flex justify-between items-center text-[10px] text-rpg-text-secondary z-40 pointer-events-none tracking-wide">
+        <span className="font-semibold">HabitQuest</span>
+        <span className="font-mono tracking-wider">{APP_VERSION}</span>
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto h-20 bg-rpg-card/80 backdrop-blur-lg border-t border-white/5 flex items-center justify-around z-50">
