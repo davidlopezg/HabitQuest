@@ -272,6 +272,24 @@ export const CATALOG: BehaviorTemplate[] = [
       { level: 7, minutes: 30, label: 'Rutina instalada: registro + movimiento + hidratación.' },
     ],
   },
+  {
+    id: 'reduce',
+    name: 'Reducir hábito',
+    icon: '🚫',
+    category: 'other',
+    slots: ['morning', 'afternoon', 'night'],
+    purpose: 'Para objetivos de tipo "dejar de..." (fumar, picar entre horas, ser descuidado, etc.). El foco es tomar conciencia + sustituir por una alternativa.',
+    startRitual: ['Anota cada vez que cae hoy (sin juzgar)', 'Sustitúyelo por una alternativa 1 min', 'Revisa la semana y celebra lo conseguido'],
+    levels: [
+      { level: 1, minutes: 1, label: 'Solo anota cada vez que caes hoy (sin culpabilidad).', need: 3, window: 5 },
+      { level: 2, minutes: 2, label: 'Anota y pon una alternativa concreta de 2 min.' },
+      { level: 3, minutes: 5, label: 'Anota + alternativa de 5 min + revisa a media tarde.' },
+      { level: 4, minutes: 5, label: 'Reduce las caídas a la mitad vs la semana 1.' },
+      { level: 5, minutes: 10, label: 'Sustitúyelo casi siempre por la alternativa.' },
+      { level: 6, minutes: 10, label: 'Una caída puntual a la semana: ya está consolidado.' },
+      { level: 7, minutes: 15, label: 'Hábito sustituido: revisión semanal de mantenimiento.' },
+    ],
+  },
 ];
 
 export function templateOf(id: string): BehaviorTemplate | undefined {

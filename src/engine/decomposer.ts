@@ -101,6 +101,18 @@ const LANGUAGE_WORDS = ['inglés', 'ingles', 'francés', 'frances', 'alemán', '
 
 function findPreset(raw: string): Preset {
   const text = raw.toLowerCase();
+  // Primero detectar objetivos de tipo "dejar de / ser menos / reducir"
+  // (deben tener prioridad sobre los presets por keywords para que un objetivo
+  // como "Quiero ser menos desordenado" use el plan reduce, no el de orden).
+  if (/^quiero\s+(dejar\s+de\s+|ser\s+menos\s+|no\s+|reducir\s+)/i.test(text)) {
+    return {
+      area: 'reduce',
+      title: raw.replace(/^quiero\s+/i, '').replace(/^dejar\s+de\s+/i, 'Dejar de ').replace(/^ser\s+/i, ''),
+      keywords: [],
+      starters: ['reduce'],
+      pipeline: [],
+    };
+  }
   for (const p of PRESETS) {
     if (p.keywords.some((k) => text.includes(k))) return p;
   }
@@ -143,18 +155,22 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
     // (ej: "Quiero aprender inglés" → hábito "Estudiar inglés").
     const isLearningLanguage = preset.area === 'learning' && LANGUAGE_WORDS.some((w) => text.includes(w));
     const langWord = LANGUAGE_WORDS.find((w) => text.includes(w));
-    // Objetivo no reconocido: usa un nombre basado en el texto del usuario
-    // ("Quiero aprender a tocar la guitarra" → hábito "Tocar la guitarra").
-    const isCustom = preset.area === 'other';
-    const customName = (raw: string) => {
-      let s = raw.trim().replace(/^quiero\s+/i, '').replace(/^ser\s+/i, '').replace(/^aprender\s+a\s+/i, 'Aprender a ');
+    // Nombre del hábito: usar el título del objetivo si es 'other' o 'reduce'
+    // ("Quiero aprender a tocar la guitarra" → "Aprender a tocar la guitarra").
+    const isOtherLike = preset.area === 'other' || preset.area === 'reduce';
+    const otherName = (raw: string) => {
+      let s = raw.trim()
+        .replace(/^quiero\s+/i, '')
+        .replace(/^ser\s+/i, '')
+        .replace(/^dejar\s+de\s+/i, 'Dejar de ')
+        .replace(/^aprender\s+a\s+/i, 'Aprender a ');
       s = s.charAt(0).toUpperCase() + s.slice(1);
       return s;
     };
     const name = isLearningLanguage && langWord
       ? `Estudiar ${langWord.charAt(0).toUpperCase() + langWord.slice(1)}`
-      : isCustom
-        ? customName(raw)
+      : isOtherLike
+        ? otherName(raw)
         : t.name;
     return {
       id: `${goalId}__${templateId}`,
@@ -180,7 +196,9 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
   let message =
     preset.area === 'other'
       ? `Nuevo objetivo: ${goal.title}. Empezaremos solo 1 minuto para romper la inercia, sin agobios. Si consolidas este primer micro-paso, subiremos a 5 min y luego a 15 min.`
-      : `Objetivo: ${goal.title}. Empezaremos ${first === 'caminar' ? 'caminando' : 'con ' + first}. Cuando ese comportamiento esté consolidado introduciremos el siguiente.`;
+      : preset.area === 'reduce'
+        ? `Objetivo: ${goal.title}. El truco es tomar conciencia primero: cada vez que caigas, apúntalo sin juzgarte. Después, sustitúyelo por una alternativa de 1 min. Si reduces las caídas a la mitad en 2 semanas, ya vas ganando.`
+        : `Objetivo: ${goal.title}. Empezaremos ${first === 'caminar' ? 'caminando' : 'con ' + first}. Cuando ese comportamiento esté consolidado introduciremos el siguiente.`;
   // Primer plan concreto para idiomas (estilo Duolingo): una semana ridículamente fácil.
   if (preset.area === 'learning' && LANGUAGE_WORDS.some((w) => raw.toLowerCase().includes(w))) {
     message +=

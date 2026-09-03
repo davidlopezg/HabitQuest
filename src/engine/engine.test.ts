@@ -645,3 +645,18 @@ test('decomposer: objetivo de adelgazar usa preset weight con micro-pasos especÃ
   assert.equal(r.behaviors[0].templateId, 'weight');
   assert.match(r.behaviors[0].name, /control de peso/i);
 });
+
+test('decomposer: objetivos "dejar de..." caen en preset reduce con micro-pasos especÃ­ficos', () => {
+  const cases = [
+    'Quiero dejar de ser descuidado',
+    'Quiero dejar de fumar',
+    'Quiero dejar de picar',
+    'Quiero ser menos desordenado',
+    'Quiero reducir el consumo',
+  ];
+  for (const text of cases) {
+    const r = decompose(text, '2025-06-15');
+    assert.equal(r.goal.area, 'reduce', `should be reduce: ${text} (got ${r.goal.area})`);
+    assert.equal(r.behaviors[0].templateId, 'reduce');
+  }
+});
