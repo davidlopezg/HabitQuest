@@ -392,10 +392,10 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setNotice({ icon, text: msg });
   }
 
-  /** Añade un objetivo adicional (máx. 3) y replanifica el día de hoy conservando lo hecho. */
+  /** Añade un objetivo adicional y replanifica el día de hoy conservando lo hecho. */
   function addGoal(raw: string) {
     const text = raw.trim();
-    if (!text || activeGoals.length >= 3) return;
+    if (!text) return;
     const outcome = decompose(text, today);
     let next = applyDecomposed(cs, outcome);
     if (checkinToday) {
@@ -405,7 +405,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setAddGoalOpen(false);
     setNewGoalText('');
     const advice = !anyConsolidated
-      ? '\n\nConsejo: si es pronto, consolida el primer objetivo antes de dividir tu atención (puedes tener hasta 3).'
+      ? '\n\nConsejo: si es pronto, consolida el primer objetivo antes de dividir tu atención.'
       : '';
     setNotice({ icon: '🎯', text: outcome.message + advice });
   }
@@ -769,14 +769,12 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             );
           })}
         </div>
-        {activeGoals.length < 3 && (
-          <button
-            onClick={() => setAddGoalOpen(true)}
-            className="mt-2 w-full py-2 rounded-xl text-sm font-semibold text-cyan-300 bg-white/5 border border-dashed border-cyan-400/40"
-          >
-            ＋ Añadir objetivo
-          </button>
-        )}
+        <button
+          onClick={() => setAddGoalOpen(true)}
+          className="mt-2 w-full py-2 rounded-xl text-sm font-semibold text-cyan-300 bg-white/5 border border-dashed border-cyan-400/40"
+        >
+          ＋ Añadir objetivo
+        </button>
         <p className="mt-2 text-[10px] text-rpg-text-secondary">
           Ordenados por la hora de ejecución de hoy · toca un objetivo para ver sus fases, niveles y adherencia.
         </p>
@@ -839,7 +837,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             >
               <h3 className="font-heading font-bold text-lg mb-1">🎯 Añadir objetivo</h3>
               <p className="text-xs text-rpg-text-secondary mb-3">
-                ¿Qué más quieres conseguir? (hasta 3 objetivos en curso)
+                ¿Qué más quieres conseguir?
               </p>
               <textarea
                 autoFocus
