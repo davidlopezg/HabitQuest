@@ -185,7 +185,14 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
       currentLevel: 1,
       preferredSlots: t.slots,
       kind: t.kind,
-      startRitual: t.startRitual,
+      // Micro-pasos personalizados para objetivos custom/reduce (basados en
+      // heurísticas del texto). Para presets conocidos, usa los del catálogo.
+      startRitual:
+        preset.area === 'other'
+          ? generateCustomMicroSteps(raw)
+          : preset.area === 'reduce'
+            ? generateCustomMicroSteps(raw)
+            : t.startRitual,
       strategies: STRATEGY_TIPS[t.id] ? { [STRATEGY_TIPS[t.id]!.key]: STRATEGY_TIPS[t.id]!.text } : undefined,
     };
   });
@@ -212,6 +219,124 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
 /** El siguiente comportamiento del pipeline que toca introducir. */
 export function nextPipelineTemplate(goal: Goal): string | undefined {
   return goal.pipeline[0];
+}
+
+/**
+ * Genera 3 micro-pasos personalizados para un objetivo custom (no reconocido).
+ * Usa heurísticas simples basadas en el texto del objetivo.
+ */
+export function generateCustomMicroSteps(raw: string): string[] {
+  const text = raw.toLowerCase().trim();
+  const heuristics: Array<{ keys: RegExp; steps: string[] }> = [
+    {
+      // cuidar aspecto / imagen personal / skincare
+      keys: /(aspecto|imagen|skincare|piel|cara|pelo|peinar|afeitar|maquill|vestir|ropa)/i,
+      steps: [
+        'Lávate la cara con agua tibia y sécate con cuidado (1 min).',
+        'Hidrata la piel y péinate/arréglate el pelo (2 min).',
+        'Elige ropa limpia que te guste y sal a respirar aire 5 min.',
+      ],
+    },
+    {
+      // relaciones / comunicación / pareja / familia / amigos
+      keys: /(relaci[óo]n|pareja|familia|amig|comunicar|hablar|discutir|reconcili)/i,
+      steps: [
+        'Escribe en 1 min qué te molesta o quieres cambiar.',
+        'Habla con la persona 2 min sin interrumpir.',
+        'Acuerda UN gesto concreto para esta semana (5 min).',
+      ],
+    },
+    {
+      // dinero / finanzas / ahorrar / gastar
+      keys: /(dinero|finanza|ahorr|gastar|comprar|presupuesto|deuda)/i,
+      steps: [
+        'Apunta hoy en qué te gastas 1 € (1 min).',
+        'Revisa la app del banco 2 min y categoriza un gasto.',
+        'Cancela o pospone UNA compra no esencial esta semana (5 min).',
+      ],
+    },
+    {
+      // puntualidad / tiempo / llegar tarde
+      keys: /(puntualidad|puntual|impuntual|tarde|retras|hora)/i,
+      steps: [
+        'Pon una alarma 10 min antes de cada cita hoy.',
+        'Prepara lo que necesitas la noche anterior (2 min).',
+        'Sal de casa 5 min antes de lo que crees necesario.',
+      ],
+    },
+    {
+      // dormir / sueño / descansar
+      keys: /(dormir|sueñ|descansar|acostar|insomnio|despertar)/i,
+      steps: [
+        'Baja la luz y pantallas 30 min antes de dormir (1 min de decisión).',
+        'Prepárate para dormir a la misma hora hoy (5 min de rutina).',
+        'Levántate a la misma hora mañana aunque no quieras (10 min de exposición a luz).',
+      ],
+    },
+    {
+      // cuidado de plantas / huerta / jardín
+      keys: /(planta|huerto|jard[ií]n|sembrar|regar|cultivar)/i,
+      steps: [
+        'Riega una planta o revisa una maceta hoy (1 min).',
+        'Limpia una hoja seca o quita una mala hierba (2 min).',
+        'Sal al jardín o balcón 5 min y observa qué necesita cada planta.',
+      ],
+    },
+    {
+      // tocar instrumento / música / arte
+      keys: /(guitarra|piano|instrumento|tocar|m[uú]sica|cantar|pintar|dibujar|arte)/i,
+      steps: [
+        'Saca el instrumento o material y ponlo a la vista (1 min).',
+        'Toca/escala/ejercicio 2 min sin parar.',
+        'Continúa 5 min con una canción o pieza sencilla.',
+      ],
+    },
+    {
+      // programar / código / software / tecnología
+      keys: /(programar|codigo|código|software|aplicaci[óo]n|app|web|desarrollar|tecnolog)/i,
+      steps: [
+        'Abre el editor y lee 1 min tu código de ayer.',
+        'Escribe 2 líneas nuevas o arregla un bug pequeño.',
+        'Documenta o commitea lo que hiciste hoy (5 min).',
+      ],
+    },
+    {
+      // cocinar / cocina
+      keys: /(cocinar|cocina|receta|comida)/i,
+      steps: [
+        'Mira la nevera 1 min y elige UNA comida para hoy.',
+        'Corta o prepara los ingredientes 5 min sin prisa.',
+        'Cocina una sola receta completa (15 min).',
+      ],
+    },
+    {
+      // escritos / blog / escribir
+      keys: /(escribir|blog|art[ií]culo|carta|diario|redacci[óo]n)/i,
+      steps: [
+        'Abre el documento y ponle título (1 min).',
+        'Escribe 1 frase sin borrar lo que salga.',
+        'Continúa 10 min con el texto abierto.',
+      ],
+    },
+    {
+      // puntual / orden en general
+      keys: /(orden|limpieza|limpiar|recoger|escritorio|casa|armario)/i,
+      steps: [
+        'Recoge UN objeto de una superficie hoy (1 min).',
+        'Limpia UNA zona pequeña: mesa, estante o encimera (2 min).',
+        'Ordena UN cajón o estante completo (10 min).',
+      ],
+    },
+  ];
+  for (const h of heuristics) {
+    if (h.keys.test(text)) return h.steps;
+  }
+  // Default genérico pero más útil que "abre la app"
+  return [
+    'Escribe 1 min qué significa este objetivo para ti.',
+    'Haz UNA micro-acción concreta hoy relacionada con el objetivo (5 min).',
+    'Revisa el avance a los 3 días y ajusta si hace falta (10 min).',
+  ];
 }
 
 export type { BehaviorCategory };

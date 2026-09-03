@@ -660,3 +660,12 @@ test('decomposer: objetivos "dejar de..." caen en preset reduce con micro-pasos 
     assert.equal(r.behaviors[0].templateId, 'reduce');
   }
 });
+
+test('decomposer: objetivos custom generan micro-pasos específicos (heurísticas por keywords)', () => {
+  const r1 = decompose('Quiero cuidar mi aspecto', '2025-06-15');
+  assert.match(r1.behaviors[0].startRitual?.[0] ?? '', /cara|piel|aspecto/i, 'debería hablar de cara/piel');
+  const r2 = decompose('Quiero aprender a tocar la guitarra', '2025-06-15');
+  assert.match(r2.behaviors[0].startRitual?.[0] ?? '', /instrumento|guitarra|tocar/i);
+  const r3 = decompose('Quiero ahorrar dinero', '2025-06-15');
+  assert.match(r3.behaviors[0].startRitual?.[0] ?? '', /gast|€|dinero/i);
+});
