@@ -234,6 +234,27 @@ export function templateOf(id: string): BehaviorTemplate | undefined {
   return CATALOG.find((t) => t.id === id);
 }
 
+/**
+ * Estrategia recomendada por el coach para cada tipo de hábito (1 por hábito).
+ * El usuario puede editarla, ampliarla o borrarla.
+ */
+export const STRATEGY_TIPS: Partial<
+  Record<string, { key: 'cue' | 'craving' | 'response' | 'reward'; text: string }>
+> = {
+  walk: { key: 'cue', text: 'Deja las zapatillas a la vista: señal para salir en cuanto te levantes.' },
+  strength: { key: 'response', text: 'Prepara el material (o las pesas) la noche anterior: menos fricción al empezar.' },
+  mobility: { key: 'craving', text: 'Hazlo solo mientras oyes tu podcast o música favorita (fórmula de la tentación).' },
+  read: { key: 'cue', text: 'Deja el libro abierto encima de la mesa o en la mesilla de noche.' },
+  study: { key: 'response', text: 'Abre la app o el material antes y pon el móvil en modo avión.' },
+  mindfulness: { key: 'cue', text: 'Hazlo justo después de despertar, antes de tocar el móvil.' },
+  sleep_routine: { key: 'response', text: 'Carga el móvil fuera del dormitorio.' },
+  tidy: { key: 'response', text: 'Pon un temporizador de 5 min y empieza por una sola superficie.' },
+  cook: { key: 'response', text: 'Prepara o corta la verdura la noche anterior.' },
+  focus: { key: 'cue', text: 'Elige UNA tarea la noche anterior y apaga notificaciones al empezar.' },
+  write: { key: 'cue', text: 'Deja el documento abierto con el cursor en la primera frase.' },
+  supplements: { key: 'cue', text: 'Pon el bote junto al cepillo de dientes: no podrás olvidarlo.' },
+};
+
 /** Niveles resueltos de un comportamiento (plantilla o curva personalizada). */
 export function resolveLevels(b: Behavior): BehaviorLevelDef[] {
   const src = b.customLevels && b.customLevels.length > 0 ? b.customLevels : templateOf(b.templateId)?.levels ?? [];

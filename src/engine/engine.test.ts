@@ -537,3 +537,16 @@ test('micro-pasos: hábitos de alta fricción traen ritual de arranque; binario 
   assert.equal(templateOf('supplements')?.kind, 'binary');
   assert.equal(templateOf('focus')?.kind, undefined); // por defecto volume
 });
+
+test('estrategias: al crear un hábito el coach deja una recomendación editable', () => {
+  const d = decompose('Quiero leer más', '2025-06-15');
+  const b = d.behaviors[0];
+  assert.ok(b.strategies?.cue && b.strategies.cue.includes('libro'), 'recomendación de Lectura');
+  // Añadir por chat un binario con su recomendación.
+  let state = stateWithGoal('Quiero dormir mejor', '2025-06-15');
+  const goal = state.goals[0];
+  const r = parseAddHabitRequest('añade un hábito de vitaminas')!;
+  state = addBehaviorToState(state, goal.id, '2025-06-15', r);
+  const v = state.behaviors.find((x) => x.templateId === 'supplements')!;
+  assert.ok(v.strategies?.cue && v.strategies.cue.includes('cepillo'), 'recomendación de vitaminas');
+});

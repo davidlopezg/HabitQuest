@@ -11,7 +11,7 @@
  */
 
 import type { Behavior, BehaviorCategory, Goal } from './types.ts';
-import { CATALOG, templateOf } from './levels.ts';
+import { CATALOG, STRATEGY_TIPS, templateOf } from './levels.ts';
 import { todayKey } from './time.ts';
 
 export interface DecomposedOutcome {
@@ -151,6 +151,7 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
       preferredSlots: t.slots,
       kind: t.kind,
       startRitual: t.startRitual,
+      strategies: STRATEGY_TIPS[t.id] ? { [STRATEGY_TIPS[t.id]!.key]: STRATEGY_TIPS[t.id]!.text } : undefined,
     };
   });
 

@@ -12,7 +12,7 @@
  */
 
 import type { Behavior, CoachState, DaySlot } from './types.ts';
-import { templateOf } from './levels.ts';
+import { STRATEGY_TIPS, templateOf } from './levels.ts';
 
 export interface AddHabitRequest {
   templateId: string;
@@ -123,6 +123,9 @@ export function addBehaviorToState(
     startMinute: req.time,
     kind: tpl.kind,
     startRitual: tpl.startRitual,
+    strategies: STRATEGY_TIPS[tpl.id]
+      ? { [STRATEGY_TIPS[tpl.id]!.key]: STRATEGY_TIPS[tpl.id]!.text }
+      : undefined,
   };
 
   return { ...state, behaviors: [...state.behaviors, behavior] };

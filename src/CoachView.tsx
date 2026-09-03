@@ -50,6 +50,7 @@ import {
   resolveLevels,
   SLOT_DEFAULT_MIN,
   SLOT_LABEL,
+  STRATEGY_TIPS,
   streakDays,
   todayKey,
   toHHMM,
@@ -78,6 +79,13 @@ function loadState(): CoachState {
       return {
         ...base,
         ...parsed,
+        // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
+        behaviors: (parsed.behaviors ?? []).map((b) => {
+          const tip = STRATEGY_TIPS[b.templateId];
+          const own = b.strategies && Object.values(b.strategies).some(Boolean);
+          if (!tip || own) return b;
+          return { ...b, strategies: { [tip.key]: tip.text } as HabitStrategies };
+        }),
         counters: { ...base.counters, ...(parsed.counters ?? {}) },
         memory: { ...base.memory, ...(parsed.memory ?? {}) },
         chat: parsed.chat ?? [],
@@ -511,6 +519,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
       preferredSlots: t.slots,
       kind: t.kind,
       startRitual: t.startRitual,
+      strategies: STRATEGY_TIPS[t.id] ? { [STRATEGY_TIPS[t.id]!.key]: STRATEGY_TIPS[t.id]!.text } : undefined,
     };
     let next: CoachState = {
       ...cs,
@@ -1674,6 +1683,12 @@ function GoalDetailOverlay({
             const { done, need, window: win } = levelProgress(b, logs, today);
             const isBinary = (b.kind ?? 'volume') === 'binary';
             const ritual = b.startRitual ?? [];
+            const stratVals = b.strategies ?? {};
+            const stratTip = STRATEGY_TIPS[b.templateId];
+            const untouchedTip =
+              !!stratTip &&
+              Object.values(stratVals).filter(Boolean).length === 1 &&
+              stratVals[stratTip.key] === stratTip.text;
             const consolidated = counters.consolidated.includes(b.id);
             const pct = Math.min(100, Math.round((done / need) * 100));
 
@@ -1917,14 +1932,21 @@ function GoalDetailOverlay({
                   >
                     <span className="text-[10px] uppercase tracking-wider text-rpg-text-secondary">
                       🌀 Estrategias del hábito
-                      {Object.values(b.strategies ?? {}).some(Boolean) && (
+                      {untouchedTip ? (
+                        <span className="ml-1.5 text-cyan-300">· recomendada por el coach</span>
+                      ) : Object.values(stratVals).some(Boolean) ? (
                         <span className="ml-1.5 text-green-400">· configurada</span>
-                      )}
+                      ) : null}
                     </span>
                     <span className="text-cyan-300 text-sm">{strategyOpenId === b.id ? '−' : '+'}</span>
                   </button>
                   {strategyOpenId === b.id && (
                     <div className="mt-2 space-y-2">
+                      {untouchedTip && (
+                        <p className="text-[9px] text-cyan-200/70 leading-relaxed">
+                          💡 El coach la sugirió automáticamente. Edítala si quieres o déjala así.
+                        </p>
+                      )}
                       {STRATEGY_META.map((f) => (
                         <div key={f.key}>
                           <label className="block text-[9px] uppercase tracking-wider text-rpg-text-secondary mb-0.5">
