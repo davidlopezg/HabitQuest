@@ -1107,6 +1107,12 @@ export default function App() {
         {activeTab === 'hero' && <motion.div key="hero" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{renderHero()}</motion.div>}
       </AnimatePresence>
 
+      {/* Versión visible en todas las pantallas (arriba de la nav) */}
+      <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-5 py-1 flex justify-between items-center text-[9px] text-rpg-text-secondary z-40 pointer-events-none">
+        <span>HabitQuest</span>
+        <span className="font-mono">{APP_VERSION}</span>
+      </div>
+
       <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto h-20 bg-rpg-card/80 backdrop-blur-lg border-t border-white/5 flex items-center justify-around z-50">
         <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'home' ? 'text-white' : 'text-rpg-text-secondary'}`}><Home size={20} /><span className="text-[9px]">Inicio</span></button>
         <button onClick={() => setActiveTab('coach')} className={`flex flex-col items-center gap-1 px-3 py-2 ${activeTab === 'coach' ? 'text-white' : 'text-rpg-text-secondary'}`}><Sparkles size={20} /><span className="text-[9px]">Coach</span></button>
