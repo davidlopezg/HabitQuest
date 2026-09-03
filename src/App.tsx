@@ -735,6 +735,7 @@ export default function App() {
       </section>
     </div>
   );
+  };
 
   const renderStats = () => {
     const weeklyTotal = userData.habits.reduce((acc, h) => {
@@ -1275,5 +1276,4 @@ export default function App() {
       {showGuide && <GuideView open onClose={() => setShowGuide(false)} />}
     </div>
   );
-}
 }
