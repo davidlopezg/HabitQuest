@@ -1610,20 +1610,19 @@ interface GoalDetailProps {
   canIntroduce: boolean;
 }
 
-/** Progreso dentro del nivel actual: éxitos completos en la ventana. */
+/** Progreso dentro del nivel actual: éxitos (full o minimal) en la ventana. */
 function levelProgress(b: Behavior, logs: BehaviorLogEntry[], today: string) {
   const def = levelDef(b)!;
   const win = def.window ?? 7;
   const from = addDays(today, -(win - 1));
-  const attempts = logs.filter(
+  const exitos = logs.filter(
     (l) =>
       l.behaviorId === b.id &&
       l.date >= from &&
       l.date <= today &&
-      l.plannedMinutes >= 0.75 * def.minutes,
+      (l.kind === 'full' || l.kind === 'minimal'),
   );
-  const done = attempts.filter((l) => l.minutes >= 0.75 * def.minutes).length;
-  return { done, need: def.need ?? 5, window: win };
+  return { done: exitos.length, need: def.need ?? 5, window: win };
 }
 
 function GoalDetailOverlay({
