@@ -94,8 +94,18 @@ function loadState(): CoachState {
       behaviors: behaviorsRaw.map((b) => {
         const tip = STRATEGY_TIPS[b.templateId];
         const own = b.strategies && Object.values(b.strategies).some(Boolean);
-        if (!tip || own) return b;
-        return { ...b, strategies: { [tip.key]: tip.text } as HabitStrategies };
+        let fixed = b;
+        if (!tip || own) {
+          // ok
+        } else {
+          fixed = { ...fixed, strategies: { [tip.key]: tip.text } as HabitStrategies };
+        }
+        // Migración: si un hábito fue creado con bug (templateId 'walk' pero nombre custom),
+        // corregir a 'custom' para que use los micro-pasos incrementales correctos.
+        if (fixed.templateId === 'walk' && fixed.name && fixed.name !== 'Caminar') {
+          fixed = { ...fixed, templateId: 'custom' };
+        }
+        return fixed;
       }),
       counters: { ...base.counters, ...((parsed as CoachState).counters ?? {}) },
       memory: { ...base.memory, ...((parsed as CoachState).memory ?? {}) },
