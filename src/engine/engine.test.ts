@@ -405,7 +405,7 @@ test('plan: respeta la hora exacta (startMinute) del comportamiento', () => {
   const state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
   const b = state.behaviors[0];
   state.behaviors = state.behaviors.map((x) => (x.id === b.id ? { ...x, startMinute: 660 } : x)); // 11:00
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { plan } = getOrBuildPlan(state, c);
   assert.equal(plan.items[0].startMinute, 660);
 });
@@ -432,7 +432,7 @@ test('coach añade el hábito pedido y lo programa a la hora exacta', () => {
   state = addBehaviorToState(state, goal.id, '2025-06-15', r);
   const b = state.behaviors.find((x) => x.goalId === goal.id && x.startMinute === 1260)!;
   assert.ok(b, 'debe crear el hábito');
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { state: s2, plan: p2 } = getOrBuildPlan(state, c);
   state = s2;
   const item = p2.items.find((i) => i.behaviorId === b.id)!;
@@ -441,7 +441,7 @@ test('coach añade el hábito pedido y lo programa a la hora exacta', () => {
 
 test('replan: "lo dejo para mañana" excusa hoy y el hábito vuelve mañana', () => {
   let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
   state = s1;
   const b = state.behaviors[0];
@@ -461,7 +461,7 @@ test('objetivos: removeGoal elimina objetivo, hábitos, logs y sus items del pla
   state = applyDecomposed(state, decompose('Quiero leer más', '2025-06-15'));
   const g1 = state.goals.find((g) => g.area === 'fitness')!;
   const g2 = state.goals.find((g) => g.area === 'reading')!;
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
   state = s1;
   const firstItem = p1.items.find((i) => i.goalId === g1.id)!;
@@ -480,7 +480,7 @@ test('objetivos: removeGoal elimina objetivo, hábitos, logs y sus items del pla
 
 test('plan: rebuildPlan al añadir un 2º objetivo conserva lo ya hecho y suma lo nuevo', () => {
   let state = stateWithGoal('Quiero ponerme en forma', '2025-06-15');
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { state: s1, plan: p1 } = getOrBuildPlan(state, c);
   state = s1;
   const first = p1.items[0];
@@ -505,7 +505,7 @@ test('agenda: hábito L–V no se planifica el domingo y la adherencia no lo pen
     x.id === b0.id ? { ...x, schedule: { type: 'days', days: [1, 2, 3, 4, 5] } } : x,
   );
   const b = state.behaviors[0];
-  const cSun = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const cSun = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { state: s1, plan: pSun } = getOrBuildPlan(state, cSun);
   state = s1;
   assert.equal(pSun.items.filter((i) => i.behaviorId === b.id).length, 0, 'domingo no programado');
@@ -524,7 +524,7 @@ test('tipos: hábito binario (vitaminas) se planifica sin minutos ni versión m�
   state = addBehaviorToState(state, goal.id, '2025-06-15', r);
   const b = state.behaviors.find((x) => x.templateId === 'supplements')!;
   assert.equal(b.kind, 'binary');
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { plan: p } = getOrBuildPlan(state, c);
   const item = p.items.find((i) => i.behaviorId === b.id)!;
   assert.ok(item, 'el binario entra en el plan');
@@ -539,7 +539,7 @@ test('micro-pasos: el plan del día muestra exactamente el micro-paso del nivel 
   state = addBehaviorToState(state, state.goals[0].id, '2025-06-15', req);
   const b = state.behaviors.find((x) => x.templateId === 'write')!;
   state.behaviors = state.behaviors.map((x) => (x.id === b.id ? { ...x, currentLevel: 2 } : x));
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { plan } = getOrBuildPlan(state, c);
   const item = plan.items.find((i) => i.behaviorId === b.id)!;
   assert.ok(item, 'micro-paso en el plan');
@@ -561,7 +561,7 @@ test('micro-pasos: el detalle del objetivo marca como activo el paso del nivel',
 
 test('planner: muestra el label del nivel (no "Nombre — X min")', () => {
   const state = stateWithGoal('Quiero leer más', '2025-06-15');
-  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const c = ci({ date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any);
   const { plan } = getOrBuildPlan(state, c);
   const item = plan.items[0];
   assert.match(item.label, /Abrir el libro o la app/);
@@ -672,7 +672,7 @@ test('decomposer: objetivos custom generan micro-pasos específicos (heurística
 
 test('updateBehaviorTime (vía setCs + rebuildPlan): cambiar hora reordena el plan', () => {
   // Reproduce lo que hace updateBehaviorTime en CoachView.tsx
-  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  const ck = { date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any;
   let s = emptyState();
   s.checkins.push(ck);
   const o1 = decompose('Quiero aprender inglés', '2025-06-15');
@@ -705,7 +705,7 @@ test('updateBehaviorTime (vía setCs + rebuildPlan): cambiar hora reordena el pl
 
 test('regresión: cambiar hora del hábito 3° en slot morning actualiza el plan (no se queda con el offset del slot counter)', () => {
   // Caso del usuario: 3 hábitos en morning, edita el 3° a 9:00.
-  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  const ck = { date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any;
   let s = emptyState();
   s.checkins.push(ck);
   const out = decompose('Quiero cuidar mi aspecto', '2025-06-15');
@@ -722,7 +722,7 @@ test('regresión: cambiar hora del hábito 3° en slot morning actualiza el plan
 });
 
 test('regresión exacta del usuario: 4 objetivos, editar hora, verificar que se guarda', () => {
-  const ck = { date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' };
+  const ck = { date: '2025-06-15', timeAvailable: 'normal', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' } as any;
   let s = emptyState();
   s.checkins.push(ck);
   // 4 objetivos (como el usuario)
