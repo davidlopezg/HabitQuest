@@ -720,6 +720,9 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             const gb = allBehaviors.filter((b) => b.goalId === g.id);
             const gConsolidated = gb.some((b) => cs.counters.consolidated.includes(b.id));
             const hour = goalHourOf(g.id);
+            const goalItems = plan?.items.filter((i) => i.goalId === g.id) ?? [];
+            const gDone = goalItems.filter((i) => i.status === 'done_full' || i.status === 'done_minimal').length;
+            const gTotal = goalItems.length;
             return (
               <button
                 key={g.id}
@@ -737,6 +740,11 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
                       ? gb.map((b) => `${b.icon} ${b.name} · Nv${b.currentLevel}`).join('   ')
                       : 'sin hábitos aún'}
                     {g.pipeline.length > 0 ? `   +${g.pipeline.length} en cola` : ''}
+                    {gTotal > 0 && (
+                      <span className={`ml-1 ${gDone === gTotal ? 'text-green-400' : 'text-rpg-text-secondary'}`}>
+                        {`   ✅ hoy ${gDone}/${gTotal}`}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
