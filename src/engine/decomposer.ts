@@ -99,7 +99,7 @@ function findPreset(raw: string): Preset {
     area: 'other',
     title: raw.replace(/^quiero\s+/i, '').replace(/^ser\s+/i, ''),
     keywords: [],
-    starters: ['walk'],
+    starters: ['custom'],
     pipeline: [],
   };
 }
@@ -134,9 +134,19 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
     // (ej: "Quiero aprender inglés" → hábito "Estudiar inglés").
     const isLearningLanguage = preset.area === 'learning' && LANGUAGE_WORDS.some((w) => text.includes(w));
     const langWord = LANGUAGE_WORDS.find((w) => text.includes(w));
+    // Objetivo no reconocido: usa un nombre basado en el texto del usuario
+    // ("Quiero aprender a tocar la guitarra" → hábito "Tocar la guitarra").
+    const isCustom = preset.area === 'other';
+    const customName = (raw: string) => {
+      let s = raw.trim().replace(/^quiero\s+/i, '').replace(/^ser\s+/i, '').replace(/^aprender\s+a\s+/i, 'Aprender a ');
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+      return s;
+    };
     const name = isLearningLanguage && langWord
       ? `Estudiar ${langWord.charAt(0).toUpperCase() + langWord.slice(1)}`
-      : t.name;
+      : isCustom
+        ? customName(raw)
+        : t.name;
     return {
       id: `${goalId}__${templateId}`,
       goalId,
@@ -160,7 +170,7 @@ export function decompose(raw: string, today: string = todayKey()): DecomposedOu
   const first = starterNames[0] ?? 'el primer hábito';
   let message =
     preset.area === 'other'
-      ? `Vamos a descomponer tu objetivo en pasos pequeños. Empezaremos con ${first}.`
+      ? `Nuevo objetivo: ${goal.title}. Empezaremos solo 1 minuto para romper la inercia, sin agobios. Si consolidas este primer micro-paso, subiremos a 5 min y luego a 15 min.`
       : `Objetivo: ${goal.title}. Empezaremos ${first === 'caminar' ? 'caminando' : 'con ' + first}. Cuando ese comportamiento esté consolidado introduciremos el siguiente.`;
   // Primer plan concreto para idiomas (estilo Duolingo): una semana ridículamente fácil.
   if (preset.area === 'learning' && LANGUAGE_WORDS.some((w) => raw.toLowerCase().includes(w))) {
