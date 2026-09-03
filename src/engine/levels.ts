@@ -87,8 +87,8 @@ export const CATALOG: BehaviorTemplate[] = [
     slots: ['morning', 'night'],
     purpose: 'Empezaremos abriendo el libro. Nada más. El hábito se construye después.',
     levels: [
-      { level: 1, minutes: 1, label: 'Abrir el libro o la app, sin más.', label: 'Abrir el libro o la app', need: 3, window: 5 },
-      { level: 2, minutes: 1, label: 'Leer 1 minuto, sin presión.', label: 'Leer 1 minuto' },
+      { level: 1, minutes: 1, label: 'Abrir el libro o la app, sin más.', label: 'Abrir el libro o la app, sin más.', need: 3, window: 5 },
+      { level: 2, minutes: 1, label: 'Leer 1 minuto, sin presión.', label: 'Leer 1 minuto, sin presión.' },
       { level: 3, minutes: 5, label: 'Leer 5 minutos completos.' },
       { level: 4, minutes: 10, label: 'Leer 10 min al día.' },
       { level: 5, minutes: 15, label: 'Leer 15 min con un apunte breve al final.' },
@@ -105,7 +105,7 @@ export const CATALOG: BehaviorTemplate[] = [
     purpose: 'Empezaremos con 1 minuto diario en la app o el material. Sin más.',
     startRitual: ['Abrir la app o el material', 'Hacer 1 ejercicio o leer 1 frase', 'Cerrar el móvil durante esos minutos'],
     levels: [
-      { level: 1, minutes: 1, label: 'Abrir la app o el material y hacer 1 ejercicio.', label: 'Abrir el material y hacer 1 ejercicio', need: 3, window: 5 },
+      { level: 1, minutes: 1, label: 'Abrir la app o el material y hacer 1 ejercicio.', label: 'Abrir la app o el material y hacer 1 ejercicio.', need: 3, window: 5 },
       { level: 2, minutes: 2, label: 'Hacer 2 minutos del temario.' },
       { level: 3, minutes: 5, label: 'Estudiar 5 min completos.' },
       { level: 4, minutes: 10, label: 'Estudiar 10 min con foco.' },
