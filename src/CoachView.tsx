@@ -1677,6 +1677,14 @@ function GoalDetailOverlay({
             const def = levelDef(b)!;
             const nextDef = resolveLevels(b)[b.currentLevel]; // índice 0-based → nivel+1
             const ladder = resolveLevels(b);
+            const desc = (lv: { level: number; minutes: number; label?: string }) =>
+              lv.label
+                ? lv.label
+                : lv.level === 1
+                  ? 'Empezar con un paso ridículamente pequeño (lo importante es arrancar).'
+                  : lv.minutes <= 2
+                    ? 'Mantener el gesto, sin más.'
+                    : 'Hacer el hábito al nivel completo.';
             const a7 = Math.round(adherence(logs, b, today, 7).rate * 100);
             const a30 = Math.round(adherence(logs, b, today, 30).rate * 100);
             const streak = streakDays(logs, b, today);
@@ -1763,7 +1771,7 @@ function GoalDetailOverlay({
                   </div>
                 </div>
 
-                {/* Fases: solo para hábitos de volumen */}
+                {/* Fases: solo para hábitos de volumen. Lista vertical con minutos + qué hacer. */}
                 {isBinary ? (
                   <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
                     Sin fases: cada día cuenta igual (hecho o no hecho).
@@ -1771,29 +1779,35 @@ function GoalDetailOverlay({
                 ) : (
                   <>
                     <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
-                      Fases ({ladder.length})
+                      Fases ({ladder.length}) — qué hacer en cada nivel
                     </p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <ul className="space-y-1.5">
                       {ladder.map((lv) => {
                         const passed = lv.level < b.currentLevel;
                         const current = lv.level === b.currentLevel;
                         return (
-                          <span
+                          <li
                             key={lv.level}
-                            className={`text-[10px] px-2 py-1 rounded-lg ${
+                            className={`flex items-start gap-2 px-3 py-2 rounded-xl ${
                               current
-                                ? 'bg-cyan-500/25 ring-1 ring-cyan-400 text-cyan-100 font-bold'
+                                ? 'bg-cyan-500/15 ring-1 ring-cyan-400/60'
                                 : passed
-                                  ? 'bg-green-500/10 text-green-300/70'
-                                  : 'bg-white/5 text-rpg-text-secondary'
+                                  ? 'bg-green-500/5 opacity-80'
+                                  : 'bg-white/5'
                             }`}
-                            title={lv.label ?? `${lv.minutes} min`}
                           >
-                            {passed ? '✓' : current ? '●' : '·'} {lv.minutes} min
-                          </span>
+                            <span className="text-[11px] mt-0.5 font-bold w-4 text-center">
+                              {passed ? '✓' : current ? '●' : '·'}
+                            </span>
+                            <span className="text-[10px] mt-0.5 font-bold w-8 text-rpg-text-secondary">Nv {lv.level}</span>
+                            <span className="text-[10px] mt-0.5 font-bold w-12 text-rpg-text-secondary">{lv.minutes} min</span>
+                            <span className={`text-xs flex-1 leading-snug ${current ? 'font-bold text-cyan-100' : ''}`}>
+                              {desc(lv)}
+                            </span>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
                   </>
                 )}
 
