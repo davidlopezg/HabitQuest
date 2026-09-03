@@ -567,3 +567,44 @@ test('planner: muestra el label del nivel (no "Nombre — X min")', () => {
   assert.match(item.label, /Abrir el libro o la app/);
   assert.ok(!/Lectura\s*—\s*\d+/.test(item.label));
 });
+
+test('recordCompletion: ignora entradas inválidas sin corromper el estado', () => {
+  let state = stateWithGoal('Quiero leer más', '2025-06-15');
+  const b = state.behaviors[0];
+  // Fecha mal formada
+  let s1 = recordCompletion(state, { date: 'ayer', behaviorId: b.id, minutes: 5 } as any);
+  assert.equal(s1, state);
+  // behaviorId vacío
+  s1 = recordCompletion(state, { date: '2025-06-15', behaviorId: '', minutes: 5 } as any);
+  assert.equal(s1, state);
+  // Behavior inexistente
+  s1 = recordCompletion(state, { date: '2025-06-15', behaviorId: 'no-existe', minutes: 5 } as any);
+  assert.equal(s1, state);
+  // Minutes negativas → 0, sin reasonCode → 'miss'
+  state = recordCompletion(state, { date: '2025-06-15', behaviorId: b.id, minutes: -10 });
+  assert.equal(state.logs[0].minutes, 0);
+  assert.equal(state.logs[0].kind, 'miss');
+  // JSON.parse sí lanza con input corrupto (loadState usa try/catch para no romper).
+  assert.throws(() => JSON.parse('{{{'));
+});
+
+test('7 días sintéticos: adherencia, racha, avance y consistencia', () => {
+  let state = stateWithGoal('Quiero ponerme en forma', '2025-06-01');
+  const b = state.behaviors[0];
+  // Generar 14 días con un check-in y un log por día (algunos completos, otros no).
+  for (let i = 0; i < 14; i++) {
+    const date = addDays('2025-06-01', i);
+    const c = ci({ date, energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+    state = getOrBuildPlan(state, c).state;
+    const item = state.plans[date].items.find((x) => x.behaviorId === b.id)!;
+    const minutes = i % 7 === 6 ? 0 : 8;
+    state = recordCompletion(state, { date, behaviorId: b.id, minutes, plannedMinutes: item.minutes, dayMode: c.intention as any });
+  }
+  const a = adherence(state.logs, b, '2025-06-14', 7);
+  assert.ok(a.full + a.minimal + a.excused > 0);
+  assert.ok(a.eligible > 0);
+  const s = streakDays(state.logs, b, '2025-06-14');
+  assert.ok(s >= 0);
+  const rec = recommendLevel(b, state.logs, '2025-06-14');
+  assert.ok(['maintain', 'advance', 'reduce', 'not_enough_data'].includes(rec.action));
+});

@@ -545,6 +545,28 @@ export default function App() {
         </div>
       </section>
 
+      {/* --- Hábitos recurrentes (motor Coach) --- */}
+      <div className="mt-4 rounded-xl bg-black/30 p-4"
+        style={{ overflow: 'hidden' }}>
+        <h3 className="font-bold text-sm uppercase tracking-wider mb-3 text-cyan-400">
+          Mis hábitos recurrentes (motor Coach){' '}
+          <span className="text-xs text-gray-400">({coachHabits.length} hábito(s))</span>
+        </h3>
+        <ul className="space-y-2 max-h-40 overflow-y-auto">
+          {coachHabits.length > 0 ? (
+            coachHabits.map((h) => (
+              <li key={h.id} className="flex items-center gap-2 p-2 bg-black/20 rounded"
+                style={{ fontSize: '0.85rem' }}>
+                <span className="text-cyan-400 flex-1">{h.name}</span>
+                <span className="text-xs text-gray-400">Nivel {h.currentLevel}, {h.racha} días</span>
+              </li>
+            ))
+          ) : (
+            <li className="text-gray-400 text-sm italic">Sin hábitos recurrentes (usa Coach ▶️ para crear nuevos)</li>
+          )}
+        </ul>
+      </div>
+
       {showHomeInfo && (
         <section className="rpg-card p-4 border-l-4 border-l-amber-400">
           <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">Modo manual</p>
@@ -929,7 +951,32 @@ export default function App() {
     </div>
   );
 
-  // --- Habit Manager Modal ---
+  // Hábitos recurrentes del motor Coach (para Inicio)
+  // Recurrentes = nivel > 1 O tienen al menos 1 completación 'full'
+  const coachRaw = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('habitquest_coach') || 'null'); } catch { return null; }
+  }, []);
+  const coachHabits = useMemo(() => {
+    if (!coachRaw?.behaviors || !coachRaw?.logs) return [];
+    return (coachRaw.behaviors as any[])
+      .filter((b: any) => {
+        const completions = (coachRaw.logs as any[]).filter(
+          (l: any) => l.behaviorId === b.id && l.kind === 'full'
+        ).length;
+        return b.currentLevel > 1 || completions > 0;
+      })
+      .map((b: any) => {
+        const completions = (coachRaw.logs as any[]).filter(
+          (l: any) => l.behaviorId === b.id && l.kind === 'full'
+        ).length;
+        return {
+          id: b.id,
+          name: b.name || b.templateId || 'Hábito',
+          currentLevel: b.currentLevel || 1,
+          racha: completions,
+        };
+      });
+  }, [coachRaw]);
   const renderHabitManager = () => (
     <motion.div 
       initial={{ opacity: 0 }} 

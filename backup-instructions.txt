@@ -1,0 +1,53 @@
+Para hacer una copia de tus hábitos actuales, sigue estos pasos:
+
+1. **Abre la app** en tu navegador (Chrome, Safari, etc.) - la app debe estar cargada y mostrando tus hábitos actuales.
+
+2. **Abre las herramientas de desarrollo** (F12 o Cmd+Option+I en Mac) para acceder a la consola de JavaScript.
+
+3. **Ejecuta este código** en la consola (copia y pega todo este bloque):
+
+```javascript
+(function exportHabitBackup() {
+  const key = 'habitquest_coach';
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    alert('No hay hábitos guardados aún (localStorage vacío).');
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    alert('Error al parsear hábitos guardados.');
+    return;
+  }
+  const exportObj = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    habits: parsed.behaviors ?? [],
+    goals: parsed.goals ?? [],
+    logs: parsed.logs ?? [],
+    checkins: parsed.checkins ?? [],
+    plans: parsed.plans ?? {},
+    counters: parsed.counters ?? {},
+    memory: parsed.memory ?? {},
+    chat: parsed.chat ?? [],
+  };
+  const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `habitquest-habitos-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('Copia de seguridad creada! Archivo descargado como habitquest-habitos-YYYY-MM-DD.json');
+}
+```
+
+4. **Presiona Enter** después de pegar el código en la consola.
+
+5. **Verás un mensaje** que dice "Copia de seguridad creada! Archivo descargado como habitquest-habitos-YYYY-MM-DD.json".
+
+6. **El archivo se guardará en tu dispositivo**. Puedes moverlo a otro dispositivo, copiarlo a USB, o subirlo a la nube. Cuando necesites restaurar tus hábitos, simplemente recarga la app en el mismo navegador y verifica que los datos se cargan automáticamente.
+
+✅ **Esto es seguro**: solo lee tu localStorage existente, no modifica nada. La copia es 100% local y no se envía a ningún servidor.

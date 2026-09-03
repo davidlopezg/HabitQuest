@@ -12,6 +12,7 @@ import type {
   CoachState,
   DayCheckIn,
   DayPlan,
+  LogKind,
   PlanItemStatus,
   ReasonCode,
 } from './types.ts';
@@ -71,28 +72,38 @@ export interface CompletionInput {
  * log + plan actualizado + contadores de gamificación.
  */
 export function recordCompletion(state: CoachState, input: CompletionInput): CoachState {
+  // ----- Validación defensiva -----
+  if (!input || typeof input !== 'object') return state;
+  if (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return state;
+  if (typeof input.behaviorId !== 'string' || input.behaviorId.length === 0) return state;
+  const minutes = Number.isFinite(input.minutes) ? Math.max(0, Math.round(input.minutes ?? 0)) : 0;
+  if (minutes > 24 * 60) return state; // más de 24 h es claramente un bug
+
   const b = state.behaviors.find((x) => x.id === input.behaviorId);
   if (!b) return state;
 
   const plan = state.plans[input.date];
   const dayMode = input.dayMode ?? plan?.mode ?? 'normal';
-  const planned =
-    input.plannedMinutes ??
-    plan?.items.find((i) => i.behaviorId === b.id)?.minutes ??
-    0;
-  const kind = input.minutes >= planned * 0.75
-    ? 'full'
-    : input.minutes > 0
-      ? 'minimal'
-      : input.reasonCode
-        ? 'excused'
-        : 'miss';
+  const planned = Math.max(
+    0,
+    Number(input.plannedMinutes ?? plan?.items.find((i) => i.behaviorId === b.id)?.minutes ?? 0) || 0,
+  );
+
+  // ----- Clasificación: full | minimal | excused | miss -----
+  let kind: LogKind;
+  if (minutes > 0) {
+    kind = minutes >= planned * 0.75 ? 'full' : 'minimal';
+  } else if (input.reasonCode) {
+    kind = 'excused';
+  } else {
+    kind = 'miss';
+  }
 
   const log: BehaviorLogEntry = {
     date: input.date,
     behaviorId: b.id,
     kind,
-    minutes: input.minutes,
+    minutes,
     dayMode,
     reasonCode: input.reasonCode,
     plannedMinutes: planned,
@@ -110,9 +121,9 @@ export function recordCompletion(state: CoachState, input: CompletionInput): Coa
       (newState.memory.reasonCounts[input.reasonCode] ?? 0) + 1;
   }
 
-  // Marcar el elemento del plan como resuelto.
-  if (state.plans[input.date]) {
-    const items = state.plans[input.date].items.map((i) =>
+  // Marcar el elemento del plan como resuelto (solo si sigue pendiente).
+  if (plan) {
+    const items = plan.items.map((i) =>
       i.behaviorId === b.id && i.status === 'pending'
         ? {
             ...i,
@@ -127,11 +138,7 @@ export function recordCompletion(state: CoachState, input: CompletionInput): Coa
     );
     newState.plans = {
       ...state.plans,
-      [input.date]: {
-        ...state.plans[input.date],
-        items,
-        updatedAt: new Date().toISOString(),
-      },
+      [input.date]: { ...plan, items, updatedAt: new Date().toISOString() },
     };
   }
 

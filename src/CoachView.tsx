@@ -73,28 +73,38 @@ const EXAMPLES = [
 function loadState(): CoachState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<CoachState>;
-      const base = emptyState();
-      return {
-        ...base,
-        ...parsed,
-        // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
-        behaviors: (parsed.behaviors ?? []).map((b) => {
-          const tip = STRATEGY_TIPS[b.templateId];
-          const own = b.strategies && Object.values(b.strategies).some(Boolean);
-          if (!tip || own) return b;
-          return { ...b, strategies: { [tip.key]: tip.text } as HabitStrategies };
-        }),
-        counters: { ...base.counters, ...(parsed.counters ?? {}) },
-        memory: { ...base.memory, ...(parsed.memory ?? {}) },
-        chat: parsed.chat ?? [],
-      } as CoachState;
-    }
+    if (!raw) return emptyState();
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') throw new Error('bad shape');
+    const base = emptyState();
+    // Validación mínima: arrays y objetos críticos.
+    const goals = Array.isArray((parsed as CoachState).goals) ? (parsed as CoachState).goals : [];
+    const behaviorsRaw = Array.isArray((parsed as CoachState).behaviors) ? (parsed as CoachState).behaviors : [];
+    const logs = Array.isArray((parsed as CoachState).logs) ? (parsed as CoachState).logs : [];
+    const checkins = Array.isArray((parsed as CoachState).checkins) ? (parsed as CoachState).checkins : [];
+    const plans = (parsed as CoachState).plans && typeof (parsed as CoachState).plans === 'object' ? (parsed as CoachState).plans : {};
+    return {
+      ...base,
+      ...(parsed as Partial<CoachState>),
+      goals,
+      logs,
+      checkins,
+      plans,
+      // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
+      behaviors: behaviorsRaw.map((b) => {
+        const tip = STRATEGY_TIPS[b.templateId];
+        const own = b.strategies && Object.values(b.strategies).some(Boolean);
+        if (!tip || own) return b;
+        return { ...b, strategies: { [tip.key]: tip.text } as HabitStrategies };
+      }),
+      counters: { ...base.counters, ...((parsed as CoachState).counters ?? {}) },
+      memory: { ...base.memory, ...((parsed as CoachState).memory ?? {}) },
+      chat: Array.isArray((parsed as CoachState).chat) ? (parsed as CoachState).chat : [],
+    } as CoachState;
   } catch {
-    /* ignore */
+    // JSON corrupto → no perdemos la app; empezamos limpio.
+    return emptyState();
   }
-  return emptyState();
 }
 
 function nowMin(): number {
