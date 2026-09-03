@@ -638,3 +638,10 @@ test('decomposer: objetivos custom reciben nombre basado en el texto', () => {
   assert.equal(r.goal.area, 'other');
   assert.equal(r.behaviors[0].templateId, 'custom');
 });
+
+test('decomposer: objetivo de adelgazar usa preset weight con micro-pasos específicos', () => {
+  const r = decompose('Quiero adelgazar', '2025-06-15');
+  assert.equal(r.goal.area, 'weight');
+  assert.equal(r.behaviors[0].templateId, 'weight');
+  assert.match(r.behaviors[0].name, /control de peso/i);
+});

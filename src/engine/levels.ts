@@ -254,6 +254,24 @@ export const CATALOG: BehaviorTemplate[] = [
       { level: 7, minutes: 30, label: '30 min al día: hábito instalado.' },
     ],
   },
+  {
+    id: 'weight',
+    name: 'Control de peso',
+    icon: '⚖️',
+    category: 'nutrition',
+    slots: ['morning', 'midday', 'afternoon'],
+    purpose: 'Perder peso de forma sostenible: registro + movimiento + alimentación. Sin culpas.',
+    startRitual: ['Apunta lo que comes hoy (sin juzgar)', 'Camina 15 min después de comer', 'Bebe un vaso de agua antes de cada comida'],
+    levels: [
+      { level: 1, minutes: 1, label: 'Apunta una comida hoy (desayuno, comida o cena).', need: 3, window: 5 },
+      { level: 2, minutes: 1, label: 'Apunta las 3 comidas principales del día.' },
+      { level: 3, minutes: 5, label: 'Apunta todo + pasea 5 min después de comer.' },
+      { level: 4, minutes: 10, label: 'Apunta todo + pasea 10 min después de comer.' },
+      { level: 5, minutes: 15, label: 'Apunta todo + pasea 15 min + un vaso extra de agua.' },
+      { level: 6, minutes: 20, label: 'Apunta todo + 20 min de movimiento + dos vasos extra de agua.' },
+      { level: 7, minutes: 30, label: 'Rutina instalada: registro + movimiento + hidratación.' },
+    ],
+  },
 ];
 
 export function templateOf(id: string): BehaviorTemplate | undefined {

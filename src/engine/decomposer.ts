@@ -38,6 +38,13 @@ const PRESETS: Preset[] = [
     pipeline: ['strength', 'mobility'],
   },
   {
+    area: 'weight',
+    title: 'Adelgazar',
+    keywords: ['adelgazar', 'adelgaza', 'perder peso', 'bajar peso', 'bajar de peso', 'dieta', 'kilos'],
+    starters: ['weight'],
+    pipeline: ['walk', 'cook'],
+  },
+  {
     area: 'reading',
     title: 'Leer más',
     keywords: ['leer', 'lectura', 'libro', 'libros', 'kindle', 'novela'],
