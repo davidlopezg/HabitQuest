@@ -561,6 +561,18 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     setNotice({ icon: '🗑️', text: 'Objetivo eliminado. Puedes crear otro cuando quieras.' });
   }
 
+  /** Primera hora de ejecución del día para un objetivo (orden de la tarjeta). */
+  function goalHourOf(goalId: string): number {
+    const items = plan?.items.filter((i) => i.goalId === goalId) ?? [];
+    const fromPlan = items.filter((i) => i.status !== 'excused').map((i) => i.startMinute);
+    if (fromPlan.length > 0) return Math.min(...fromPlan);
+    const mins = cs.behaviors
+      .filter((b) => b.enabled && b.goalId === goalId)
+      .map((b) => b.startMinute ?? SLOT_DEFAULT_MIN[b.preferredSlots[0] ?? 'morning']);
+    return mins.length > 0 ? Math.min(...mins) : Infinity;
+  }
+  const orderedGoals = [...activeGoals].sort((a, b) => goalHourOf(a.id) - goalHourOf(b.id));
+
   // ---------- render por fase ----------
 
   if (phase === 'onboarding') {
@@ -679,9 +691,10 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
           <span className="text-[10px] text-rpg-text-secondary">{activeGoals.length}/3 en curso</span>
         </div>
         <div className="space-y-2">
-          {activeGoals.map((g) => {
+          {orderedGoals.map((g) => {
             const gb = allBehaviors.filter((b) => b.goalId === g.id);
             const gConsolidated = gb.some((b) => cs.counters.consolidated.includes(b.id));
+            const hour = goalHourOf(g.id);
             return (
               <button
                 key={g.id}
@@ -701,7 +714,14 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
                     {g.pipeline.length > 0 ? `   +${g.pipeline.length} en cola` : ''}
                   </span>
                 </span>
-                <span className="text-cyan-400 text-xl font-bold">›</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  {Number.isFinite(hour) && (
+                    <span className="text-[10px] px-2 py-1 rounded-full bg-white/5 text-rpg-text-secondary font-semibold">
+                      🕐 {toHHMM(hour)}
+                    </span>
+                  )}
+                  <span className="text-cyan-400 text-xl font-bold">›</span>
+                </span>
               </button>
             );
           })}
@@ -715,7 +735,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
           </button>
         )}
         <p className="mt-2 text-[10px] text-rpg-text-secondary">
-          Toca un objetivo para ver sus fases, niveles y adherencia.
+          Ordenados por la hora de ejecución de hoy · toca un objetivo para ver sus fases, niveles y adherencia.
         </p>
       </section>
 

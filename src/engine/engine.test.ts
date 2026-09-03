@@ -29,7 +29,17 @@ import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
 import { adherence, streakDays } from './history.ts';
-import { applyDecomposed, emptyState, getOrBuildPlan, rebuildPlan, recordCompletion, removeGoal, postponeItem } from './index.ts';
+import {
+  applyDecomposed,
+  emptyState,
+  getOrBuildPlan,
+  rebuildPlan,
+  recordCompletion,
+  removeGoal,
+  postponeItem,
+  parseAddHabitRequest,
+  addBehaviorToState,
+} from './index.ts';
 
 // ---------- helpers ----------
 
@@ -397,6 +407,35 @@ test('plan: respeta la hora exacta (startMinute) del comportamiento', () => {
   const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
   const { plan } = getOrBuildPlan(state, c);
   assert.equal(plan.items[0].startMinute, 660);
+});
+
+test('coach en chat: parsea peticiones de añadir hábitos (con hora o franja)', () => {
+  const r = parseAddHabitRequest('añade un hábito de meditación a las 7:30');
+  assert.ok(r);
+  assert.equal(r!.templateId, 'mindfulness');
+  assert.equal(r!.time, 450);
+  const r2 = parseAddHabitRequest('quiero un hábito para caminar por la mañana');
+  assert.equal(r2!.templateId, 'walk');
+  assert.equal(r2!.slot, 'morning');
+  const r3 = parseAddHabitRequest('ponme un hábito de leer por la noche');
+  assert.equal(r3!.templateId, 'read');
+  assert.equal(r3!.slot, 'night');
+  assert.equal(parseAddHabitRequest('¿cómo estás hoy?'), null);
+  assert.equal(parseAddHabitRequest('añade un hábito de volar con alas'), null);
+});
+
+test('coach añade el hábito pedido y lo programa a la hora exacta', () => {
+  let state = stateWithGoal('Quiero reducir el estrés', '2025-06-15');
+  const goal = state.goals[0];
+  const r = parseAddHabitRequest('añade un hábito de respiración a las 21:00')!;
+  state = addBehaviorToState(state, goal.id, '2025-06-15', r);
+  const b = state.behaviors.find((x) => x.goalId === goal.id && x.startMinute === 1260)!;
+  assert.ok(b, 'debe crear el hábito');
+  const c = ci({ date: '2025-06-15', energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const { state: s2, plan: p2 } = getOrBuildPlan(state, c);
+  state = s2;
+  const item = p2.items.find((i) => i.behaviorId === b.id)!;
+  assert.equal(item.startMinute, 1260);
 });
 
 test('replan: "lo dejo para mañana" excusa hoy y el hábito vuelve mañana', () => {

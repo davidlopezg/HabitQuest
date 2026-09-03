@@ -120,6 +120,7 @@ const SECTIONS: Section[] = [
     title: 'Chat e insights',
     paragraphs: [
       'El botón de chat (esquina inferior) abre tu coach conversacional. Le puedes decir "no puedo hoy", "¿por qué sigo fallando?" o "¿qué has aprendido sobre mí?".',
+      'También puede EJECUTAR acciones: pídele "añade un hábito de meditación a las 7:30" (o de leer, caminar, fuerza…) y lo crea con su nivel 1 y su hora.',
       'Con la API key de MiniMax configurada responde con IA y contexto real. Sin key, responde en modo local con el motor de reglas.',
       'El botón "🧠 Insights" muestra lo que la app ha aprendido: adherencia por hábito, patrones y obstáculos repetidos.',
     ],

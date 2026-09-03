@@ -12,10 +12,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Trash2, X, Bot, User } from 'lucide-react';
 import type { ChatMessage, CoachState, PlanItem } from './engine/index.ts';
 import {
+  addBehaviorToState,
   applyCoachReply,
+  CATALOG,
   classifyReason,
   handleCannot,
+  parseAddHabitRequest,
   postponeItem,
+  rebuildPlan,
+  SLOT_LABEL,
+  TEMPLATE_AREA,
+  toHHMM,
 } from './engine/index.ts';
 import {
   chatWithCoach,
@@ -29,6 +36,7 @@ const CHIPS = [
   '🙅 No puedo hacerlo hoy',
   '📉 ¿Por qué sigo fallando?',
   '🧠 ¿Qué has aprendido sobre mis hábitos?',
+  '➕ Añade un hábito de meditación a las 7:30',
   '🕐 ¿Cuál es mi mejor horario?',
   '🚀 Quiero llegar antes a mi objetivo',
 ];
@@ -72,8 +80,37 @@ export default function CoachChat({ open, onClose, state, setState, today }: Pro
     const allDone = !!plan && plan.items.length > 0 && pending.length === 0;
 
     try {
-      // 1) Acciones REALES: el coach ejecuta (replanifica el día), no solo aconseja.
-      if (looksLikeCannot(text) && pending.length > 0) {
+      // 0) El coach puede AÑADIR hábitos si el humano se lo pide.
+      const addReq = parseAddHabitRequest(text);
+      if (addReq) {
+        const activeGoals = s.goals.filter((g) => g.status === 'active');
+        if (activeGoals.length === 0) {
+          setFinal(
+            s,
+            'Primero crea un objetivo en la tab Coach (dime qué quieres conseguir) y después te añado hábitos concretos.',
+          );
+        } else {
+          const areas = TEMPLATE_AREA[addReq.templateId] ?? [];
+          const target =
+            activeGoals.find((g) => areas.includes(g.area)) ?? activeGoals[0];
+          let st = addBehaviorToState(s, target.id, today, addReq);
+          const ck = st.checkins.find((c) => c.date === today);
+          if (ck) st = rebuildPlan(st, ck);
+          const tpl = CATALOG.find((t) => t.id === addReq.templateId);
+          const firstMin = tpl?.levels[0]?.minutes ?? 1;
+          const hora =
+            addReq.time !== undefined
+              ? ` a las ${toHHMM(addReq.time)}`
+              : addReq.slot
+                ? ` por ${SLOT_LABEL[addReq.slot].toLowerCase()}`
+                : '';
+          setFinal(
+            st,
+            `Hecho ✅ He añadido «${tpl?.name}» (nivel 1: ${firstMin} min${hora}) al objetivo «${target.title}». ` +
+              'Irás subiendo de nivel cuando se consolide. Si quieres, luego ajustas su hora en la pantalla de fases.',
+          );
+        }
+      } else if (looksLikeCannot(text) && pending.length > 0) {
         const target = pending[0];
         if (/mañana|otro\s*d[ií]a/i.test(text)) {
           // “Lo dejo para mañana” → excusa solo este hábito hoy (no rompe racha).
