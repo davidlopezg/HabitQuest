@@ -109,10 +109,22 @@ function loadState(): CoachState {
           try {
             const fresh = decompose(goal.raw, '2025-06-15');
             const expectedTpl = fresh.behaviors[0]?.templateId;
+            const expectedRitual = fresh.behaviors[0]?.startRitual;
             if (expectedTpl && fixed.templateId !== expectedTpl) {
               // Si los templateIds no coinciden, es probable que el hábito esté
-              // usando un preset antiguo. Lo actualizamos.
+              // usando un preset antiguo. Actualizamos templateId y regeneramos
+              // el startRitual con los micro-pasos correctos.
               fixed = { ...fixed, templateId: expectedTpl };
+            }
+            // Regenerar startRitual si está vacío o si difiere del esperado
+            // (para custom/reduce, los micro-pasos cambian según el texto).
+            if (
+              expectedRitual &&
+              expectedRitual.length > 0 &&
+              (!fixed.startRitual || fixed.startRitual.length === 0 ||
+                JSON.stringify(fixed.startRitual) !== JSON.stringify(expectedRitual))
+            ) {
+              fixed = { ...fixed, startRitual: expectedRitual };
             }
           } catch {
             /* ignore — fallback al templateId existente */
