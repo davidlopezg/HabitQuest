@@ -47,7 +47,9 @@ const PRESETS: Preset[] = [
   {
     area: 'learning',
     title: 'Aprender un idioma',
-    keywords: ['inglés', 'ingles', 'francés', 'frances', 'alemán', 'italiano', 'portugués', 'idioma', 'aprender', 'estudiar', 'examen', 'curso', 'oposición'],
+    // Solo idiomas específicos: evita que "Quiero aprender a tocar la guitarra"
+    // se clasifique como idioma.
+    keywords: ['inglés', 'ingles', 'francés', 'frances', 'alemán', 'italiano', 'portugués', 'chino', 'japonés', 'coreano', 'idioma', 'oposición', 'opositar'],
     starters: ['study'],
     pipeline: ['read'],
   },

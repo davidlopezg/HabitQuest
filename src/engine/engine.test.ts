@@ -608,3 +608,33 @@ test('7 días sintéticos: adherencia, racha, avance y consistencia', () => {
   const rec = recommendLevel(b, state.logs, '2025-06-14');
   assert.ok(['maintain', 'advance', 'reduce', 'not_enough_data'].includes(rec.action));
 });
+
+test('decomposer: objetivos ambiguos caen en custom (no en learning)', () => {
+  const cases = [
+    'Quiero aprender a tocar la guitarra',
+    'Quiero aprender a programar',
+    'Quiero aprender a cocinar',
+    'Quiero estudiar una carrera',
+    'Quiero hacer un curso online',
+    'Quiero tener un huerto',
+  ];
+  for (const text of cases) {
+    const r = decompose(text, '2025-06-15');
+    assert.notEqual(r.goal.area, 'learning', `should NOT be learning: ${text}`);
+  }
+});
+
+test('decomposer: solo objetivos con idioma real caen en learning', () => {
+  const cases = ['Quiero aprender inglés', 'Quiero aprender francés', 'Quiero aprender chino'];
+  for (const text of cases) {
+    const r = decompose(text, '2025-06-15');
+    assert.equal(r.goal.area, 'learning', `should be learning: ${text}`);
+  }
+});
+
+test('decomposer: objetivos custom reciben nombre basado en el texto', () => {
+  const r = decompose('Quiero aprender a tocar la guitarra', '2025-06-15');
+  assert.match(r.behaviors[0].name, /tocar la guitarra/i);
+  assert.equal(r.goal.area, 'other');
+  assert.equal(r.behaviors[0].templateId, 'custom');
+});
