@@ -991,3 +991,52 @@ test('rebuildGoalBehaviors: devuelve el mismo estado si el goal no existe', () =
   const after = rebuildGoalBehaviors(s, 'goal_inexistente', '2025-06-15');
   assert.equal(after, s, 'no-op defensivo');
 });
+
+test('resolver el plan de un hábito custom respeta el label de customLevels (regresión)', () => {
+  // Caso del usuario: objetivo 'Hacer chu kung' (área other → template custom
+  // con startRitual por defecto). Editó la fase 1 a label 'Ejercicios de
+  // articulaciones'. Antes del fix, resolveLevels sobrescribía SIEMPRE el
+  // label con el ritual step para templates custom/reduce, ignorando la
+  // edición del usuario. Este test lo reproduce.
+  const ck: any = {
+    date: '2025-06-15',
+    timeAvailable: 'normal',
+    energy: 7,
+    mood: 7,
+    focus: 7,
+    stress: 3,
+    intention: 'advance',
+  };
+  let s = emptyState();
+  s.checkins.push(ck);
+  s = applyDecomposed(s, decompose('Hacer chu kung', '2025-06-15'));
+  s = rebuildPlan(s, ck);
+
+  const b = s.behaviors[0];
+  assert.equal(b.templateId, 'custom', 'chu kung cae en preset custom');
+  assert.ok(b.startRitual && b.startRitual.length > 0, 'tiene startRitual por defecto');
+
+  // Antes de editar: el plan usa el primer ritual step como label.
+  const planItem0 = s.plans['2025-06-15'].items.find((i) => i.behaviorId === b.id)!;
+  assert.equal(planItem0.label, b.startRitual![0], 'sin editar, label = ritual step');
+
+  // El usuario edita la fase 1 (minutes + label).
+  const ladder = resolveLevels(b);
+  const customized = ladder.map((lv, idx) =>
+    idx === 0 ? { ...lv, minutes: 12, label: 'Ejercicios de articulaciones' } : lv,
+  );
+  s = {
+    ...s,
+    behaviors: s.behaviors.map((x) => (x.id === b.id ? { ...x, customLevels: customized } : x)),
+  };
+  s = rebuildPlan(s, ck);
+
+  // Después de editar: el label del plan debe ser el personalizado.
+  const planItem1 = s.plans['2025-06-15'].items.find((i) => i.behaviorId === b.id)!;
+  assert.equal(planItem1.minutes, 12, 'plan refleja los minutos editados');
+  assert.equal(
+    planItem1.label,
+    'Ejercicios de articulaciones',
+    'plan refleja el label editado (NO el ritual step)',
+  );
+});

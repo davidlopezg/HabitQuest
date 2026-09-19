@@ -320,12 +320,16 @@ export const STRATEGY_TIPS: Partial<
 
 /** Niveles resueltos de un comportamiento (plantilla o curva personalizada). */
 export function resolveLevels(b: Behavior): BehaviorLevelDef[] {
-  const src = b.customLevels && b.customLevels.length > 0 ? b.customLevels : templateOf(b.templateId)?.levels ?? [];
+  const hasCustom = !!(b.customLevels && b.customLevels.length > 0);
+  const src = hasCustom ? b.customLevels! : templateOf(b.templateId)?.levels ?? [];
   const need = (l: number, x?: number) => x ?? (l === 1 ? FIRST_NEED : DEFAULT_NEED);
   const window = (l: number, x?: number) => x ?? (l === 1 ? FIRST_WINDOW : DEFAULT_WINDOW);
   // Para hábitos custom/reduce, si el Behavior tiene micro-pasos personalizados
-  // (startRitual), los usamos como labels en lugar de los genéricos del catálogo.
+  // (startRitual), los usamos como labels por defecto en lugar de los genéricos
+  // del catálogo. PERO si el usuario ha personalizado las fases (customLevels),
+  // su label gana sobre el micro-paso del ritual.
   const dynamicLabel =
+    !hasCustom &&
     (b.templateId === 'custom' || b.templateId === 'reduce') &&
     b.startRitual &&
     b.startRitual.length > 0
