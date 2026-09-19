@@ -131,6 +131,47 @@ Para usar sin la nube:
 
 ---
 
+## ☁️ Sincronizar objetivos del Coach en Supabase (opcional)
+
+Si quieres que tus **objetivos** (Coach: goals, behaviors, plans, logs…) sobrevivan a un borrado de localStorage o aparezcan en otro dispositivo, conecta Supabase:
+
+### 1. Crear el proyecto
+1. Ve a [supabase.com](https://supabase.com) → **New project**.
+2. Anota el **Project URL** y la **anon public key** (Project Settings → API).
+
+### 2. Crear la tabla
+SQL editor → New query → pega y ejecuta:
+
+```sql
+create table if not exists habitquest_state (
+  device_id  uuid primary key,
+  state      jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table habitquest_state enable row level security;
+create policy "public_all" on habitquest_state
+  for all using (true) with check (true);
+```
+
+> ⚠️ La política `public_all` es para uso personal sin login. Si vas a publicar la app a terceros, sustitúyela por una política que requiera autenticación.
+
+### 3. Variables de entorno
+En `.env`:
+
+```env
+VITE_SUPABASE_URL="https://xxxxxxx.supabase.co"
+VITE_SUPABASE_ANON_KEY="eyJ..."
+```
+
+Sin esas variables la app sigue funcionando con localStorage — no rompe nada. La sincronización se activa sola en cuanto las pongas.
+
+### 4. ¿Cómo funciona?
+- Cada dispositivo genera un UUID la primera vez y lo guarda en localStorage.
+- Cada cambio en el coach se sube a Supabase con un debounce de 500 ms.
+- Al abrir la app, si Supabase tiene objetivos y local está vacío (PWA reinstalada, navegador limpio, otro dispositivo), se adoptan los del remoto.
+
+---
+
 ## 📱 instalar como PWA
 
 1. Abre la app en tu móvil

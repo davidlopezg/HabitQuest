@@ -28,6 +28,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import CoachView from './CoachView.tsx';
 import GuideView from './GuideView.tsx';
+import { useDailyMotivation } from './services/motivations.ts';
+import { MotivationModal, MotivationSettings } from './components/Motivation.tsx';
 
 // --- Types ---
 interface Habit {
@@ -73,7 +75,7 @@ interface DailyChallenge {
 
 // --- Constants ---
 const LEVEL_XP = 100;
-const APP_VERSION = 'v1.0.118  ·  f4a4b01  ·  2026-09-03 22:07 UTC';
+const APP_VERSION = 'v1.0.119  ·  34f583d  ·  2026-09-19 10:22 UTC';
 
 const HABIT_GROUPS = [
   { id: 'morning', name: 'MAÑANA', icon: '🌅', color: 'text-yellow-400' },
@@ -195,6 +197,9 @@ export default function App() {
   const today = new Date().toISOString().split('T')[0];
   const level = useMemo(() => Math.floor(userData.xp / LEVEL_XP) + 1, [userData.xp]);
   const currentLevelXp = useMemo(() => userData.xp % LEVEL_XP, [userData.xp]);
+
+  // Mensaje diario de motivación (modal antes de entrar a la app).
+  const motivation = useDailyMotivation();
 
   // Save to localStorage on every change
   useEffect(() => {
@@ -1012,6 +1017,16 @@ export default function App() {
           <button onClick={() => setShowHabitManager(true)} className="px-4 py-2 rounded-lg bg-white/10 text-sm">Abrir</button>
         </div>
       </div>
+
+      {/* Mensajes diarios de motivación (pool editable + on/off) */}
+      <div className="my-2">
+        <MotivationSettings
+          pool={motivation.pool}
+          enabled={motivation.enabled}
+          onUpdatePool={motivation.updatePool}
+          onToggleEnabled={motivation.toggleEnabled}
+        />
+      </div>
       
       <div className="rpg-card p-1">
         <div className="flex items-center justify-between p-4">
@@ -1083,6 +1098,13 @@ export default function App() {
   // --- Render ---
   return (
     <div className="min-h-screen max-w-lg mx-auto pb-24 px-5 pt-8 select-none">
+      {/* Modal diario de motivación (aparece antes de entrar a la app) */}
+      <AnimatePresence>
+        {motivation.showModal && (
+          <MotivationModal message={motivation.message} onClose={motivation.dismiss} />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {activeTab === 'coach' && (
           <motion.div key="coach" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

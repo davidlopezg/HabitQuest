@@ -60,6 +60,8 @@ import {
 import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
+import { fetchRemoteState, pushRemoteState } from './services/supabase.ts';
+import type { BehaviorLevelDef } from './engine/index.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
 const EXAMPLES = [
@@ -250,7 +252,36 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
+    // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
+    const t = setTimeout(() => { void pushRemoteState(cs); }, 500);
+    return () => clearTimeout(t);
   }, [cs]);
+
+  // Pull inicial desde Supabase: si el remoto tiene objetivos y el local está
+  // vacío (porque se borró localStorage, se reinstaló la PWA o es otro dispositivo),
+  // adoptamos el remoto. Si el local tiene objetivos y el remoto no, empujamos el local.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const remote = await fetchRemoteState();
+      if (cancelled || !remote?.state) return;
+      try {
+        const rs = remote.state as Partial<CoachState>;
+        if (Array.isArray(rs.goals) && rs.goals.length > 0 && cs.goals.length === 0) {
+          // Adoptamos remoto.
+          setCs((prev) => {
+            const merged = { ...prev, ...(rs as CoachState) };
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+            return merged;
+          });
+        }
+      } catch {
+        /* ignore malformed */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -621,6 +652,14 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     }));
   }
 
+  /** Sustituye la curva de niveles del hábito por una personalizada (fases editables). */
+  function updateBehaviorLevels(id: string, customLevels: BehaviorLevelDef[]) {
+    setCs((prev) => ({
+      ...prev,
+      behaviors: prev.behaviors.map((b) => (b.id === id ? { ...b, customLevels } : b)),
+    }));
+  }
+
   /** Elimina un objetivo y todo lo asociado (motor). */
   function deleteGoal(goalId: string) {
     let s = removeGoal(cs, goalId);
@@ -933,6 +972,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             onClose={() => setDetailGoalId(null)}
             onEditBehavior={updateBehaviorTime}
             onEditStrategies={updateBehaviorStrategies}
+            onEditLevels={updateBehaviorLevels}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
@@ -1613,6 +1653,135 @@ const STRATEGY_META: {
   { key: 'reward', emoji: '🎁', label: 'Recompensa — satisfactoria o con rendición de cuentas', ph: 'Ej: 5 hechos = 1 capítulo extra · o: aviso a un amigo si fallo' },
 ];
 
+// Opciones razonables de minutos para una fase (1..45 min).
+const PHASE_MINUTE_OPTIONS = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 40];
+
+/** Editor inline de la curva de niveles de un hábito (fases editables). */
+function PhasesEditor({
+  behavior,
+  currentLevel,
+  ladder,
+  onChange,
+}: {
+  behavior: Behavior;
+  currentLevel: number;
+  ladder: BehaviorLevelDef[];
+  onChange: (next: BehaviorLevelDef[]) => void;
+}) {
+  // Si el hábito aún no tiene curva personalizada, partimos de la resuelta
+  // (catálogo + micro-pasos). Cualquier edición la materializa en customLevels.
+  const [draft, setDraft] = useState<BehaviorLevelDef[]>(() =>
+    behavior.customLevels && behavior.customLevels.length > 0 ? behavior.customLevels : ladder,
+  );
+  const isCustomized =
+    behavior.customLevels !== undefined && behavior.customLevels.length > 0;
+
+  function commit(next: BehaviorLevelDef[]) {
+    if (next.length === 0) return; // mínimo 1 fase
+    setDraft(next);
+    onChange(next);
+  }
+
+  function updateField(idx: number, patch: Partial<BehaviorLevelDef>) {
+    commit(draft.map((lv, i) => (i === idx ? { ...lv, ...patch } : lv)));
+  }
+  function remove(idx: number) {
+    if (draft.length <= 1) return;
+    commit(draft.filter((_, i) => i !== idx).map((lv, i) => ({ ...lv, level: i + 1 })));
+  }
+  function add() {
+    const last = draft[draft.length - 1];
+    const nextMinutes = Math.min(45, (last?.minutes ?? 5) + 5);
+    const nextLevel = (last?.level ?? draft.length) + 1;
+    commit([
+      ...draft,
+      { level: nextLevel, minutes: nextMinutes, label: `Nv ${nextLevel}: …` },
+    ]);
+  }
+  function reset() {
+    // Vuelve a la curva del catálogo (eliminamos customLevels).
+    commit(ladder);
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {!isCustomized && (
+        <p className="text-[10px] text-cyan-300/80 leading-relaxed mb-1">
+          ✏️ Edita para personalizar. Por defecto usas la curva del coach.
+        </p>
+      )}
+      {draft.map((lv, idx) => {
+        const passed = lv.level < currentLevel;
+        const current = lv.level === currentLevel;
+        return (
+          <div
+            key={idx}
+            className={`flex items-start gap-2 px-3 py-2 rounded-xl ${
+              current
+                ? 'bg-cyan-500/15 ring-1 ring-cyan-400/60'
+                : passed
+                  ? 'bg-green-500/5 opacity-90'
+                  : 'bg-white/5'
+            }`}
+          >
+            <span className="text-[11px] mt-2 font-bold w-4 text-center shrink-0">
+              {passed ? '✓' : current ? '●' : '·'}
+            </span>
+            <span className="text-[10px] mt-2 font-bold w-9 text-rpg-text-secondary shrink-0">Nv {lv.level}</span>
+            <select
+              value={lv.minutes}
+              onChange={(e) => updateField(idx, { minutes: Number(e.target.value) })}
+              className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-cyan-200 outline-none shrink-0"
+              aria-label={`Minutos fase ${lv.level}`}
+            >
+              {PHASE_MINUTE_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m} min
+                </option>
+              ))}
+              {!PHASE_MINUTE_OPTIONS.includes(lv.minutes) && (
+                <option value={lv.minutes}>{lv.minutes} min</option>
+              )}
+            </select>
+            <input
+              type="text"
+              value={lv.label ?? ''}
+              onChange={(e) => updateField(idx, { label: e.target.value })}
+              placeholder={`Qué hacer en Nv ${lv.level}…`}
+              className="flex-1 min-w-0 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none focus:border-cyan-400/50"
+            />
+            <button
+              onClick={() => remove(idx)}
+              disabled={draft.length <= 1}
+              aria-label={`Eliminar fase ${lv.level}`}
+              className="p-1.5 text-red-400/80 hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            >
+              🗑️
+            </button>
+          </div>
+        );
+      })}
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={add}
+          className="flex-1 py-2 rounded-xl text-[11px] font-semibold bg-cyan-500/15 text-cyan-300"
+        >
+          ＋ Añadir fase
+        </button>
+        {isCustomized && (
+          <button
+            onClick={reset}
+            className="py-2 px-3 rounded-xl text-[11px] font-semibold bg-white/5 text-rpg-text-secondary"
+            title="Volver a la curva del coach"
+          >
+            ↺ curva del coach
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface GoalDetailProps {
   goal: Goal;
   behaviors: Behavior[];
@@ -1626,6 +1795,7 @@ interface GoalDetailProps {
     patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
   ) => void;
   onEditStrategies: (id: string, strategies: HabitStrategies) => void;
+  onEditLevels: (id: string, customLevels: BehaviorLevelDef[]) => void;
   onDelete: (goalId: string) => void;
   canIntroduce: boolean;
 }
@@ -1655,6 +1825,7 @@ function GoalDetailOverlay({
   onIntroduce,
   onEditBehavior,
   onEditStrategies,
+  onEditLevels,
   onDelete,
   canIntroduce,
 }: GoalDetailProps) {
@@ -1704,14 +1875,6 @@ function GoalDetailOverlay({
             const def = levelDef(b)!;
             const nextDef = resolveLevels(b)[b.currentLevel]; // índice 0-based → nivel+1
             const ladder = resolveLevels(b);
-            const desc = (lv: { level: number; minutes: number; label?: string }) =>
-              lv.label
-                ? lv.label
-                : lv.level === 1
-                  ? 'Empezar con un paso ridículamente pequeño (lo importante es arrancar).'
-                  : lv.minutes <= 2
-                    ? 'Mantener el gesto, sin más.'
-                    : 'Hacer el hábito al nivel completo.';
             const a7 = Math.round(adherence(logs, b, today, 7).rate * 100);
             const a30 = Math.round(adherence(logs, b, today, 30).rate * 100);
             const streak = streakDays(logs, b, today);
@@ -1808,33 +1971,12 @@ function GoalDetailOverlay({
                     <p className="mt-4 mb-1.5 text-[10px] uppercase tracking-wider text-rpg-text-secondary">
                       Fases ({ladder.length}) — qué hacer en cada nivel
                     </p>
-                    <ul className="space-y-1.5">
-                      {ladder.map((lv) => {
-                        const passed = lv.level < b.currentLevel;
-                        const current = lv.level === b.currentLevel;
-                        return (
-                          <li
-                            key={lv.level}
-                            className={`flex items-start gap-2 px-3 py-2 rounded-xl ${
-                              current
-                                ? 'bg-cyan-500/15 ring-1 ring-cyan-400/60'
-                                : passed
-                                  ? 'bg-green-500/5 opacity-80'
-                                  : 'bg-white/5'
-                            }`}
-                          >
-                            <span className="text-[11px] mt-0.5 font-bold w-4 text-center">
-                              {passed ? '✓' : current ? '●' : '·'}
-                            </span>
-                            <span className="text-[10px] mt-0.5 font-bold w-8 text-rpg-text-secondary">Nv {lv.level}</span>
-                            <span className="text-[10px] mt-0.5 font-bold w-12 text-rpg-text-secondary">{lv.minutes} min</span>
-                            <span className={`text-xs flex-1 leading-snug ${current ? 'font-bold text-cyan-100' : ''}`}>
-                              {desc(lv)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <PhasesEditor
+                      behavior={b}
+                      currentLevel={b.currentLevel}
+                      ladder={ladder}
+                      onChange={(next) => onEditLevels(b.id, next)}
+                    />
                   </>
                 )}
 
