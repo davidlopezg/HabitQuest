@@ -1663,58 +1663,83 @@ const STRATEGY_META: {
 // Opciones razonables de minutos para una fase (1..45 min).
 const PHASE_MINUTE_OPTIONS = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 40];
 
-/** Editor inline de la curva de niveles de un hábito (fases editables). */
+/** Editor inline de la curva de niveles de un hábito (fases editables).
+ *  Modelo draft + commit: las ediciones viven en estado local hasta que el
+ *  usuario pulsa Guardar. Hasta entonces el plan de hoy NO se toca. Archivar
+ *  revierte el draft al último estado guardado. */
 function PhasesEditor({
   behavior,
   currentLevel,
   ladder,
-  onChange,
+  onSave,
 }: {
   behavior: Behavior;
   currentLevel: number;
   ladder: BehaviorLevelDef[];
-  onChange: (next: BehaviorLevelDef[]) => void;
+  onSave: (next: BehaviorLevelDef[]) => void;
 }) {
-  // Si el hábito aún no tiene curva personalizada, partimos de la resuelta
-  // (catálogo + micro-pasos). Cualquier edición la materializa en customLevels.
+  // Estado inicial: si hay curva personalizada guardada, parte de ella;
+  // si no, de la curva del catálogo (ladder). Sólo se calcula al montar
+  // el editor para que las ediciones del usuario no se sobreescriban al
+  // re-renderizar tras guardar.
   const [draft, setDraft] = useState<BehaviorLevelDef[]>(() =>
     behavior.customLevels && behavior.customLevels.length > 0 ? behavior.customLevels : ladder,
   );
+  const [savedSnapshot, setSavedSnapshot] = useState<BehaviorLevelDef[]>(() =>
+    behavior.customLevels && behavior.customLevels.length > 0 ? behavior.customLevels : ladder,
+  );
+  const [isDirty, setIsDirty] = useState(false);
+
   const isCustomized =
     behavior.customLevels !== undefined && behavior.customLevels.length > 0;
 
-  function commit(next: BehaviorLevelDef[]) {
-    if (next.length === 0) return; // mínimo 1 fase
-    setDraft(next);
-    onChange(next);
-  }
-
   function updateField(idx: number, patch: Partial<BehaviorLevelDef>) {
-    commit(draft.map((lv, i) => (i === idx ? { ...lv, ...patch } : lv)));
+    setDraft((d) => d.map((lv, i) => (i === idx ? { ...lv, ...patch } : lv)));
+    setIsDirty(true);
   }
   function remove(idx: number) {
-    if (draft.length <= 1) return;
-    commit(draft.filter((_, i) => i !== idx).map((lv, i) => ({ ...lv, level: i + 1 })));
+    setDraft((d) => {
+      if (d.length <= 1) return d;
+      return d.filter((_, i) => i !== idx).map((lv, i) => ({ ...lv, level: i + 1 }));
+    });
+    setIsDirty(true);
   }
   function add() {
-    const last = draft[draft.length - 1];
-    const nextMinutes = Math.min(45, (last?.minutes ?? 5) + 5);
-    const nextLevel = (last?.level ?? draft.length) + 1;
-    commit([
-      ...draft,
-      { level: nextLevel, minutes: nextMinutes, label: `Nv ${nextLevel}: …` },
-    ]);
+    setDraft((d) => {
+      const last = d[d.length - 1];
+      const nextMinutes = Math.min(45, (last?.minutes ?? 5) + 5);
+      const nextLevel = (last?.level ?? d.length) + 1;
+      return [...d, { level: nextLevel, minutes: nextMinutes, label: `Nv ${nextLevel}: …` }];
+    });
+    setIsDirty(true);
   }
-  function reset() {
-    // Vuelve a la curva del catálogo (eliminamos customLevels).
-    commit(ladder);
+  function resetToCatalog() {
+    // Vuelve a la curva del coach (catálogo). Queda pendiente de Guardar.
+    setDraft(ladder);
+    setIsDirty(true);
+  }
+  function save() {
+    if (draft.length === 0) return; // mínimo 1 fase
+    onSave(draft);
+    setSavedSnapshot(draft);
+    setIsDirty(false);
+  }
+  function archive() {
+    // Descarta los cambios pendientes y vuelve al último estado guardado.
+    setDraft(savedSnapshot);
+    setIsDirty(false);
   }
 
   return (
     <div className="mt-2 space-y-1.5">
-      {!isCustomized && (
+      {!isCustomized && !isDirty && (
         <p className="text-[10px] text-cyan-300/80 leading-relaxed mb-1">
           ✏️ Edita para personalizar. Por defecto usas la curva del coach.
+        </p>
+      )}
+      {isDirty && (
+        <p className="text-[10px] text-amber-300/90 leading-relaxed mb-1">
+          Tienes cambios sin guardar en la curva de fases. No afectarán al plan hasta que pulses Guardar.
         </p>
       )}
       {draft.map((lv, idx) => {
@@ -1777,14 +1802,33 @@ function PhasesEditor({
         </button>
         {isCustomized && (
           <button
-            onClick={reset}
+            onClick={resetToCatalog}
             className="py-2 px-3 rounded-xl text-[11px] font-semibold bg-white/5 text-rpg-text-secondary"
-            title="Volver a la curva del coach"
+            title="Volver a la curva del coach (pendiente de Guardar)"
           >
             ↺ curva del coach
           </button>
         )}
       </div>
+      {isDirty && (
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={save}
+            disabled={draft.length === 0}
+            className="flex-1 py-2 rounded-xl text-[11px] font-bold rpg-gradient text-white"
+            title="Aplicar los cambios al plan de hoy"
+          >
+            💾 Guardar
+          </button>
+          <button
+            onClick={archive}
+            className="py-2 px-3 rounded-xl text-[11px] font-semibold bg-white/5 text-rpg-text-secondary"
+            title="Descartar los cambios pendientes"
+          >
+            ↩ Archivar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1982,7 +2026,7 @@ function GoalDetailOverlay({
                       behavior={b}
                       currentLevel={b.currentLevel}
                       ladder={ladder}
-                      onChange={(next) => onEditLevels(b.id, next)}
+                      onSave={(next) => onEditLevels(b.id, next)}
                     />
                   </>
                 )}
