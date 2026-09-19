@@ -252,6 +252,20 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today]);
 
+  // Migración: si hay checkin hoy y un plan guardado, regenerarlo para que
+  // refleje correcciones del motor (ej. resolveLevels deja de sobrescribir
+  // labels de customLevels con el ritual step). rebuildPlan conserva los
+  // estados 'done_full'/'done_minimal'/'excused' del plan anterior.
+  useEffect(() => {
+    setCs((prev) => {
+      if (!prev.checkins.some((c) => c.date === today)) return prev;
+      if (!prev.plans[today]) return prev;
+      const ck = prev.checkins.find((c) => c.date === today)!;
+      return rebuildPlan(prev, ck);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today]);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
     // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
