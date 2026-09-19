@@ -652,12 +652,19 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     }));
   }
 
-  /** Sustituye la curva de niveles del hábito por una personalizada (fases editables). */
+  /** Sustituye la curva de niveles del hábito por una personalizada (fases editables).
+   *  Si hay check-in hoy, replanifica el día para que el panel "Hoy" refleje al
+   *  instante los nuevos minutos/label de la fase (mismo patrón que updateBehaviorTime). */
   function updateBehaviorLevels(id: string, customLevels: BehaviorLevelDef[]) {
-    setCs((prev) => ({
-      ...prev,
-      behaviors: prev.behaviors.map((b) => (b.id === id ? { ...b, customLevels } : b)),
-    }));
+    setCs((prev) => {
+      let s: CoachState = {
+        ...prev,
+        behaviors: prev.behaviors.map((b) => (b.id === id ? { ...b, customLevels } : b)),
+      };
+      const ck = s.checkins.find((c) => c.date === today);
+      if (ck) s = rebuildPlan(s, ck);
+      return s;
+    });
   }
 
   /** Elimina un objetivo y todo lo asociado (motor). */
