@@ -129,8 +129,12 @@ export function planDay({ state, checkin, forceMode }: PlanInput): DayPlan {
       slot,
       startMinute: Math.min(startMinute, 1420),
       label: (() => {
+        // Si el usuario ha personalizado la curva de fases, su label manda
+        // (también sobre el micro-paso del ritual). El ritual sigue visible
+        // en el detalle del objetivo y al EMPEZAR cada hábito.
+        const hasCustom = !!(b.customLevels && b.customLevels.length > 0);
         const step = ritualStepFor(b);
-        if (step) return step;
+        if (step && !hasCustom) return step;
         if (isBinary) return b.name;
         // Volumen: prioridad al label del nivel actual (qué hacer), si existe.
         const lv = resolveLevels(b)[b.currentLevel - 1];

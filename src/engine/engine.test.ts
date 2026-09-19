@@ -752,8 +752,12 @@ test('regresión exacta del usuario: 4 objetivos, editar hora, verificar que se 
 
 test('regresión: editar la fase de un hábito (customLevels) actualiza el plan de hoy', () => {
   // Reproduce lo que hace updateBehaviorLevels en CoachView.tsx.
-  // Bug reportado: al modificar la fase, el panel "Hoy" del coach no cambiaba
-  // porque updateBehaviorLevels no disparaba rebuildPlan.
+  // Bug reportado: al modificar la fase, el panel "Hoy"/"Ahora" del coach no
+  // cambiaba. Causa raíz doble:
+  //   1) updateBehaviorLevels no disparaba rebuildPlan.
+  //   2) planner.ts priorizaba el paso del ritual sobre el label del nivel,
+  //      así que aunque se regenerara el plan, el label editado se ignoraba
+  //      para hábitos con startRitual (study, focus, write…).
   const ck = {
     date: '2025-06-15',
     timeAvailable: 'normal',
@@ -765,32 +769,59 @@ test('regresión: editar la fase de un hábito (customLevels) actualiza el plan 
   } as any;
   let s = emptyState();
   s.checkins.push(ck);
+
+  // Caso 1: hábito SIN startRitual (walk) — edición de minutos y label.
   s = applyDecomposed(s, decompose('Quiero ponerme en forma', '2025-06-15'));
   s = rebuildPlan(s, ck);
+  const walk = s.behaviors.find((x) => x.templateId === 'walk')!;
+  const walkLevels = resolveLevels(walk);
+  const walkItem0 = s.plans['2025-06-15'].items.find((i) => i.behaviorId === walk.id)!;
+  assert.ok(walkItem0.minutes > 0, 'walk: minutos iniciales > 0');
 
-  const b = s.behaviors.find((x) => x.templateId === 'walk')!;
-  const original = resolveLevels(b);
-  const originalItem = s.plans['2025-06-15'].items.find((i) => i.behaviorId === b.id)!;
-  assert.ok(originalItem.minutes > 0, 'el item inicial tiene minutos > 0');
-
-  // El usuario edita la fase actual: cambia los minutos y el label.
-  const customized = original.map((lv) => ({
-    ...lv,
-    minutes: 7,
-    label: 'Caminar 7 min personalizados',
-  }));
-  s = {
-    ...s,
-    behaviors: s.behaviors.map((x) => (x.id === b.id ? { ...x, customLevels: customized } : x)),
-  };
-  // Llamamos a rebuildPlan igual que updateBehaviorLevels tras la corrección.
+  const walkCustom = walkLevels.map((lv) => ({ ...lv, minutes: 7, label: 'Caminar 7 min personalizados' }));
+  s = { ...s, behaviors: s.behaviors.map((x) => (x.id === walk.id ? { ...x, customLevels: walkCustom } : x)) };
   s = rebuildPlan(s, ck);
+  const walkItem1 = s.plans['2025-06-15'].items.find((i) => i.behaviorId === walk.id)!;
+  assert.equal(walkItem1.minutes, 7, 'walk: el plan refleja los nuevos minutos de la fase');
+  assert.equal(walkItem1.label, 'Caminar 7 min personalizados', 'walk: el plan refleja el nuevo label');
 
-  const updatedItem = s.plans['2025-06-15'].items.find((i) => i.behaviorId === b.id)!;
-  assert.equal(updatedItem.minutes, 7, 'el plan de hoy refleja los nuevos minutos de la fase');
+  // Caso 2: hábito CON startRitual (study) — el label editado debe ganar al
+  // micro-paso del ritual cuando el usuario ha personalizado la curva.
+  let s2 = emptyState();
+  s2.checkins.push(ck);
+  s2 = applyDecomposed(s2, decompose('Quiero aprender inglés', '2025-06-15'));
+  s2 = rebuildPlan(s2, ck);
+  const study = s2.behaviors.find((x) => x.templateId === 'study')!;
+  assert.ok(study.startRitual && study.startRitual.length > 0, 'study tiene startRitual');
+  const studyItem0 = s2.plans['2025-06-15'].items.find((i) => i.behaviorId === study.id)!;
+  // Antes de personalizar, el label es el paso del ritual.
+  assert.equal(studyItem0.label, study.startRitual![0], 'study sin personalizar: label = ritual step');
+
+  const studyLevels = resolveLevels(study);
+  const studyCustom = studyLevels.map((lv) => ({ ...lv, minutes: 7, label: 'Mi paso personalizado' }));
+  s2 = { ...s2, behaviors: s2.behaviors.map((x) => (x.id === study.id ? { ...x, customLevels: studyCustom } : x)) };
+  s2 = rebuildPlan(s2, ck);
+  const studyItem1 = s2.plans['2025-06-15'].items.find((i) => i.behaviorId === study.id)!;
+  assert.equal(studyItem1.minutes, 7, 'study: el plan refleja los nuevos minutos de la fase');
   assert.equal(
-    updatedItem.label,
-    'Caminar 7 min personalizados',
-    'el plan de hoy refleja el nuevo label de la fase',
+    studyItem1.label,
+    'Mi paso personalizado',
+    'study: el label personalizado gana sobre el ritual step',
+  );
+
+  // Caso 3: si el usuario vuelve a la curva del coach (reset), vuelve el
+  // comportamiento por defecto (ritual step si existe).
+  s2 = {
+    ...s2,
+    behaviors: s2.behaviors.map((x) =>
+      x.id === study.id ? { ...x, customLevels: undefined } : x,
+    ),
+  };
+  s2 = rebuildPlan(s2, ck);
+  const studyItem2 = s2.plans['2025-06-15'].items.find((i) => i.behaviorId === study.id)!;
+  assert.equal(
+    studyItem2.label,
+    study.startRitual![0],
+    'study sin personalizar de nuevo: label = ritual step (comportamiento original)',
   );
 });
