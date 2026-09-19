@@ -978,9 +978,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             counters={cs.counters}
             today={today}
             onClose={() => setDetailGoalId(null)}
-            onEditBehavior={updateBehaviorTime}
-            onEditStrategies={updateBehaviorStrategies}
-            onEditLevels={updateBehaviorLevels}
+            onCommit={(behaviors) => setCs((prev) => commitGoalDetail(prev, behaviors, today))}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
@@ -1665,82 +1663,60 @@ const STRATEGY_META: {
 const PHASE_MINUTE_OPTIONS = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 40];
 
 /** Editor inline de la curva de niveles de un hábito (fases editables).
- *  Modelo draft + commit: las ediciones viven en estado local hasta que el
- *  usuario pulsa Guardar. Hasta entonces el plan de hoy NO se toca. Archivar
- *  revierte el draft al último estado guardado. */
+ *  Sincroniza cada cambio con el draft de la ficha via onPatch (sin botones
+ *  internos). La ficha gestiona el "dirty" y los botones Guardar/Archivar. */
 function PhasesEditor({
   behavior,
   currentLevel,
   ladder,
-  onSave,
+  onPatch,
 }: {
   behavior: Behavior;
   currentLevel: number;
   ladder: BehaviorLevelDef[];
-  onSave: (next: BehaviorLevelDef[]) => void;
+  onPatch: (customLevels: BehaviorLevelDef[]) => void;
 }) {
-  // Estado inicial: si hay curva personalizada guardada, parte de ella;
-  // si no, de la curva del catálogo (ladder). Sólo se calcula al montar
-  // el editor para que las ediciones del usuario no se sobreescriban al
-  // re-renderizar tras guardar.
+  // Draft interno: mantiene el typing en inputs sin saltos de cursor al
+  // re-renderizar la ficha. Se sincroniza con `behavior.customLevels` solo
+  // al montar (useState lazy init).
   const [draft, setDraft] = useState<BehaviorLevelDef[]>(() =>
     behavior.customLevels && behavior.customLevels.length > 0 ? behavior.customLevels : ladder,
   );
-  const [savedSnapshot, setSavedSnapshot] = useState<BehaviorLevelDef[]>(() =>
-    behavior.customLevels && behavior.customLevels.length > 0 ? behavior.customLevels : ladder,
-  );
-  const [isDirty, setIsDirty] = useState(false);
 
   const isCustomized =
     behavior.customLevels !== undefined && behavior.customLevels.length > 0;
 
+  function commit(next: BehaviorLevelDef[]) {
+    if (next.length === 0) return; // mínimo 1 fase
+    setDraft(next);
+    onPatch(next);
+  }
+
   function updateField(idx: number, patch: Partial<BehaviorLevelDef>) {
-    setDraft((d) => d.map((lv, i) => (i === idx ? { ...lv, ...patch } : lv)));
-    setIsDirty(true);
+    commit(draft.map((lv, i) => (i === idx ? { ...lv, ...patch } : lv)));
   }
   function remove(idx: number) {
-    setDraft((d) => {
-      if (d.length <= 1) return d;
-      return d.filter((_, i) => i !== idx).map((lv, i) => ({ ...lv, level: i + 1 }));
-    });
-    setIsDirty(true);
+    if (draft.length <= 1) return;
+    commit(draft.filter((_, i) => i !== idx).map((lv, i) => ({ ...lv, level: i + 1 })));
   }
   function add() {
-    setDraft((d) => {
-      const last = d[d.length - 1];
-      const nextMinutes = Math.min(45, (last?.minutes ?? 5) + 5);
-      const nextLevel = (last?.level ?? d.length) + 1;
-      return [...d, { level: nextLevel, minutes: nextMinutes, label: `Nv ${nextLevel}: …` }];
-    });
-    setIsDirty(true);
+    const last = draft[draft.length - 1];
+    const nextMinutes = Math.min(45, (last?.minutes ?? 5) + 5);
+    const nextLevel = (last?.level ?? draft.length) + 1;
+    commit([
+      ...draft,
+      { level: nextLevel, minutes: nextMinutes, label: `Nv ${nextLevel}: …` },
+    ]);
   }
   function resetToCatalog() {
-    // Vuelve a la curva del coach (catálogo). Queda pendiente de Guardar.
-    setDraft(ladder);
-    setIsDirty(true);
-  }
-  function save() {
-    if (draft.length === 0) return; // mínimo 1 fase
-    onSave(draft);
-    setSavedSnapshot(draft);
-    setIsDirty(false);
-  }
-  function archive() {
-    // Descarta los cambios pendientes y vuelve al último estado guardado.
-    setDraft(savedSnapshot);
-    setIsDirty(false);
+    commit(ladder);
   }
 
   return (
     <div className="mt-2 space-y-1.5">
-      {!isCustomized && !isDirty && (
+      {!isCustomized && (
         <p className="text-[10px] text-cyan-300/80 leading-relaxed mb-1">
           ✏️ Edita para personalizar. Por defecto usas la curva del coach.
-        </p>
-      )}
-      {isDirty && (
-        <p className="text-[10px] text-amber-300/90 leading-relaxed mb-1">
-          Tienes cambios sin guardar en la curva de fases. No afectarán al plan hasta que pulses Guardar.
         </p>
       )}
       {draft.map((lv, idx) => {
@@ -1805,31 +1781,12 @@ function PhasesEditor({
           <button
             onClick={resetToCatalog}
             className="py-2 px-3 rounded-xl text-[11px] font-semibold bg-white/5 text-rpg-text-secondary"
-            title="Volver a la curva del coach (pendiente de Guardar)"
+            title="Volver a la curva del coach (se aplicará al Guardar)"
           >
             ↺ curva del coach
           </button>
         )}
       </div>
-      {isDirty && (
-        <div className="flex gap-2 mt-2">
-          <button
-            onClick={save}
-            disabled={draft.length === 0}
-            className="flex-1 py-2 rounded-xl text-[11px] font-bold rpg-gradient text-white"
-            title="Aplicar los cambios al plan de hoy"
-          >
-            💾 Guardar
-          </button>
-          <button
-            onClick={archive}
-            className="py-2 px-3 rounded-xl text-[11px] font-semibold bg-white/5 text-rpg-text-secondary"
-            title="Descartar los cambios pendientes"
-          >
-            ↩ Archivar
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1841,13 +1798,10 @@ interface GoalDetailProps {
   counters: CoachCounters;
   today: string;
   onClose: () => void;
+  /** Aplica todos los cambios del draft al estado global de una vez y rebuilda
+   *  el plan. La ficha ya cerró el overlay al llamar a este callback. */
+  onCommit: (behaviors: Behavior[]) => void;
   onIntroduce: (goalId: string) => void;
-  onEditBehavior: (
-    id: string,
-    patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
-  ) => void;
-  onEditStrategies: (id: string, strategies: HabitStrategies) => void;
-  onEditLevels: (id: string, customLevels: BehaviorLevelDef[]) => void;
   onDelete: (goalId: string) => void;
   canIntroduce: boolean;
 }
@@ -1867,6 +1821,43 @@ function levelProgress(b: Behavior, logs: BehaviorLogEntry[], today: string) {
   return { done: exitos.length, need: def.need ?? 5, window: win };
 }
 
+// Helpers para que la ficha pueda operar sobre un draft local sin propagar
+// cada edición al estado global. cloneBehavior hace una copia defensiva
+// (clona customLevels y arrays relevantes). behaviorsEqual compara profundo.
+function cloneBehavior(b: Behavior): Behavior {
+  return {
+    ...b,
+    customLevels: b.customLevels ? b.customLevels.map((lv) => ({ ...lv })) : undefined,
+    preferredSlots: [...b.preferredSlots],
+  };
+}
+function behaviorsEqual(a: Behavior[], b: Behavior[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x.id !== y.id) return false;
+    if (x.startMinute !== y.startMinute) return false;
+    if (JSON.stringify(x.preferredSlots) !== JSON.stringify(y.preferredSlots)) return false;
+    if (JSON.stringify(x.schedule ?? null) !== JSON.stringify(y.schedule ?? null)) return false;
+    if (JSON.stringify(x.strategies ?? null) !== JSON.stringify(y.strategies ?? null)) return false;
+    if (JSON.stringify(x.customLevels ?? null) !== JSON.stringify(y.customLevels ?? null)) return false;
+  }
+  return true;
+}
+
+/** Aplica el draft completo del GoalDetailOverlay al estado global y rebuilda
+ *  el plan de hoy. Una sola llamada = una sola replanificación. */
+function commitGoalDetail(state: CoachState, behaviors: Behavior[], today: string): CoachState {
+  let s: CoachState = {
+    ...state,
+    behaviors: behaviors.map((b) => cloneBehavior(b)),
+  };
+  const ck = s.checkins.find((c) => c.date === today);
+  if (ck) s = rebuildPlan(s, ck);
+  return s;
+}
+
 function GoalDetailOverlay({
   goal,
   behaviors,
@@ -1874,18 +1865,72 @@ function GoalDetailOverlay({
   counters,
   today,
   onClose,
+  onCommit,
   onIntroduce,
-  onEditBehavior,
-  onEditStrategies,
-  onEditLevels,
   onDelete,
   canIntroduce,
 }: GoalDetailProps) {
+  // ----- Draft: copia local de los behaviors al abrir la ficha -----
+  // Todo lo que el usuario edite (fases, hora, agenda, estrategias) modifica
+  // este draft. Solo al pulsar Guardar se aplica al estado global.
+  const [draft, setDraft] = useState<Behavior[]>(() => behaviors.map(cloneBehavior));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [strategyOpenId, setStrategyOpenId] = useState<string | null>(null);
+
   const pipelineTemplates = goal.pipeline
     .map((id) => CATALOG.find((t) => t.id === id))
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+  // ¿Hay cambios sin guardar?
+  const isDirty = useMemo(() => !behaviorsEqual(draft, behaviors), [draft, behaviors]);
+
+  function patchBehavior(id: string, patch: Partial<Behavior>) {
+    setDraft((d) => d.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+  function patchStrategies(id: string, strategies: HabitStrategies) {
+    setDraft((d) => d.map((b) => (b.id === id ? { ...b, strategies } : b)));
+  }
+  function patchLevels(id: string, customLevels: BehaviorLevelDef[]) {
+    setDraft((d) => d.map((b) => (b.id === id ? { ...b, customLevels } : b)));
+  }
+  function patchTime(
+    id: string,
+    patch: { slot?: DaySlot; startMinute?: number; schedule?: BehaviorSchedule | undefined },
+  ) {
+    setDraft((d) =>
+      d.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              preferredSlots: patch.slot
+                ? [patch.slot, ...b.preferredSlots.filter((x) => x !== patch.slot)]
+                : b.preferredSlots,
+              startMinute:
+                patch.slot !== undefined
+                  ? undefined
+                  : patch.startMinute !== undefined
+                    ? Math.round(patch.startMinute)
+                    : b.startMinute,
+              schedule: 'schedule' in patch ? patch.schedule : b.schedule,
+            }
+          : b,
+      ),
+    );
+  }
+
+  function save() {
+    // Aplicamos todo el draft de una vez al estado global y rebuildamos plan.
+    onCommit(draft.map(cloneBehavior));
+    onClose();
+  }
+  function archive() {
+    // Cerramos descartando el draft.
+    onClose();
+  }
+  function handleClose() {
+    if (isDirty && !confirm('Tienes cambios sin guardar en este objetivo. ¿Salir sin guardar?')) return;
+    onClose();
+  }
 
   return (
     <motion.div
@@ -1909,7 +1954,7 @@ function GoalDetailOverlay({
               <h2 className="font-heading font-bold text-2xl leading-tight mt-0.5">{goal.title}</h2>
               <p className="text-xs text-rpg-text-secondary mt-1 italic truncate">“{goal.raw}”</p>
             </div>
-            <button onClick={onClose} className="p-2 text-rpg-text-secondary shrink-0">
+            <button onClick={handleClose} className="p-2 text-rpg-text-secondary shrink-0">
               <X size={20} />
             </button>
           </div>
@@ -1923,7 +1968,8 @@ function GoalDetailOverlay({
             </p>
           )}
 
-          {behaviors.map((b) => {
+          {behaviors.map((origB) => {
+            const b = draft.find((x) => x.id === origB.id) ?? origB;
             const def = levelDef(b)!;
             const nextDef = resolveLevels(b)[b.currentLevel]; // índice 0-based → nivel+1
             const ladder = resolveLevels(b);
@@ -2027,7 +2073,7 @@ function GoalDetailOverlay({
                       behavior={b}
                       currentLevel={b.currentLevel}
                       ladder={ladder}
-                      onSave={(next) => onEditLevels(b.id, next)}
+                      onPatch={(next) => patchLevels(b.id, next)}
                     />
                   </>
                 )}
@@ -2068,19 +2114,19 @@ function GoalDetailOverlay({
                   <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary mb-1.5">📅 Agenda</p>
                   <div className="flex flex-wrap gap-1.5">
                     <button
-                      onClick={() => onEditBehavior(b.id, { schedule: undefined })}
+                      onClick={() => patchTime(b.id, { schedule: undefined })}
                       className={`text-[10px] px-2 py-1 rounded-lg ${!b.schedule ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
                     >
                       Todos los días
                     </button>
                     <button
-                      onClick={() => onEditBehavior(b.id, { schedule: { type: 'days', days: b.schedule?.type === 'days' ? (b.schedule.days ?? []) : [1, 3, 5] } })}
+                      onClick={() => patchTime(b.id, { schedule: { type: 'days', days: b.schedule?.type === 'days' ? (b.schedule.days ?? []) : [1, 3, 5] } })}
                       className={`text-[10px] px-2 py-1 rounded-lg ${b.schedule?.type === 'days' ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
                     >
                       Días concretos
                     </button>
                     <button
-                      onClick={() => onEditBehavior(b.id, { schedule: { type: 'weekly', timesPerWeek: b.schedule?.type === 'weekly' ? (b.schedule.timesPerWeek ?? 3) : 3 } })}
+                      onClick={() => patchTime(b.id, { schedule: { type: 'weekly', timesPerWeek: b.schedule?.type === 'weekly' ? (b.schedule.timesPerWeek ?? 3) : 3 } })}
                       className={`text-[10px] px-2 py-1 rounded-lg ${b.schedule?.type === 'weekly' ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60' : 'bg-white/5 text-rpg-text-secondary'}`}
                     >
                       N veces / semana
@@ -2096,7 +2142,7 @@ function GoalDetailOverlay({
                             onClick={() => {
                               const cur = b.schedule?.days ?? [];
                               const next = on ? cur.filter((x) => x !== wd) : [...cur, wd];
-                              onEditBehavior(b.id, { schedule: { type: 'days', days: next } });
+                              patchTime(b.id, { schedule: { type: 'days', days: next } });
                             }}
                             className={`w-9 h-9 rounded-lg text-xs font-bold ${on ? 'bg-cyan-500/30 ring-1 ring-cyan-400 text-cyan-200' : 'bg-white/5 text-rpg-text-secondary'}`}
                           >
@@ -2111,7 +2157,7 @@ function GoalDetailOverlay({
                       {[1, 2, 3, 4, 5, 6].map((n) => (
                         <button
                           key={n}
-                          onClick={() => onEditBehavior(b.id, { schedule: { type: 'weekly', timesPerWeek: n } })}
+                          onClick={() => patchTime(b.id, { schedule: { type: 'weekly', timesPerWeek: n } })}
                           className={`w-9 h-9 rounded-lg text-xs font-bold ${(b.schedule?.timesPerWeek ?? 3) === n ? 'bg-cyan-500/30 ring-1 ring-cyan-400 text-cyan-200' : 'bg-white/5 text-rpg-text-secondary'}`}
                         >
                           {n}×
@@ -2138,7 +2184,7 @@ function GoalDetailOverlay({
                           if (!v) return;
                           const [hh, mm] = v.split(':').map(Number);
                           if (Number.isFinite(hh) && Number.isFinite(mm)) {
-                            onEditBehavior(b.id, { startMinute: hh * 60 + mm });
+                            patchTime(b.id, { startMinute: hh * 60 + mm });
                           }
                         }}
                         className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-cyan-200 outline-none text-sm"
@@ -2151,7 +2197,7 @@ function GoalDetailOverlay({
                       return (
                         <button
                           key={sl}
-                          onClick={() => onEditBehavior(b.id, { slot: sl })}
+                          onClick={() => patchTime(b.id, { slot: sl })}
                           className={`text-[10px] px-2 py-1 rounded-lg ${
                             active
                               ? 'bg-cyan-500/25 text-cyan-200 font-bold ring-1 ring-cyan-400/60'
@@ -2205,7 +2251,7 @@ function GoalDetailOverlay({
                             type="text"
                             value={(b.strategies ?? {})[f.key] ?? ''}
                             onChange={(e) =>
-                              onEditStrategies(b.id, {
+                              patchStrategies(b.id, {
                                 ...(b.strategies ?? {}),
                                 [f.key]: e.target.value,
                               })
@@ -2293,6 +2339,43 @@ function GoalDetailOverlay({
           <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
             La dificultad sube y baja sola según tu adherencia real.
           </p>
+        </div>
+
+        {/* Footer fijo: Guardar / Archivar — aplica a TODOS los cambios del
+            objetivo (fases, hora, agenda, estrategias). */}
+        <div className="border-t border-white/10 p-4 bg-rpg-card/95 backdrop-blur">
+          {isDirty && (
+            <p className="text-[10px] text-amber-300/90 mb-2 text-center">
+              Tienes cambios sin guardar en este objetivo. No afectarán al plan hasta que pulses Guardar.
+            </p>
+          )}
+          <div className="flex gap-2">
+            {isDirty ? (
+              <>
+                <button
+                  onClick={archive}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-white/5 text-rpg-text-secondary"
+                  title="Cerrar sin aplicar cambios"
+                >
+                  ↩ Archivar
+                </button>
+                <button
+                  onClick={save}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold rpg-gradient text-white"
+                  title="Aplicar todos los cambios al objetivo"
+                >
+                  💾 Guardar cambios
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onClose}
+                className="w-full py-3 rounded-xl text-sm font-semibold bg-white/5 text-rpg-text-secondary"
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
     </motion.div>
