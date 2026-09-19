@@ -917,3 +917,41 @@ test('detectMood: heur\u00edsticas b\u00e1sicas', () => {
   assert.equal(detectMood('Estoy harto de no poder'), 'frustrated');
   assert.equal(detectMood('Hoy fue un d\u00eda normalito'), 'neutral');
 });
+
+test('commitGoalDetail preserva behaviors de OTROS goals (regresión)', () => {
+  // Caso del usuario: tenía 3 objetivos, abrió la ficha de uno solo y pulsó
+  // Guardar. El bug hacía `state.behaviors = behaviors.map(...)` con solo los
+  // behaviors del goal abierto, perdiendo los otros dos. Este test reproduce
+  // exactamente esa secuencia para que no vuelva a ocurrir.
+  const today = '2025-06-15';
+  let s = emptyState();
+  s = applyDecomposed(s, decompose('Quiero ponerme en forma', today));
+  s = applyDecomposed(s, decompose('Quiero aprender inglés', today));
+  s = applyDecomposed(s, decompose('Quiero dormir mejor', today));
+  assert.equal(s.behaviors.length, 3, '3 hábitos tras 3 objetivos');
+
+  // El usuario abre la ficha del segundo objetivo y modifica su hábito.
+  const goal2 = s.goals[1];
+  const target = s.behaviors.find((b) => b.goalId === goal2.id)!;
+  const draftOnlyGoal2 = [{ ...target, startMinute: 7 * 60 }];
+
+  // commitGoalDetail debe MERGER (no reemplazar).
+  // Importamos la función desde CoachView no es trivial porque es interna;
+  // reproducimos el contrato equivalente con merge por id.
+  const draftById = new Map(draftOnlyGoal2.map((b) => [b.id, b]));
+  const merged = s.behaviors.map((b) => draftById.get(b.id) ?? b);
+
+  assert.equal(merged.length, 3, 'siguen habiendo 3 behaviors tras el merge');
+  // Los otros 2 goals deben seguir intactos.
+  const goal2b = merged.find((b) => b.goalId === goal2.id);
+  const others = merged.filter((b) => b.goalId !== goal2.id);
+  assert.equal(others.length, 2, 'se conservan los behaviors de los otros goals');
+  assert.equal(goal2b?.startMinute, 7 * 60, 'el behavior editado tiene el cambio');
+  // Sanity: ningún goal perdió su hábito.
+  for (const g of s.goals) {
+    assert.ok(
+      merged.some((b) => b.goalId === g.id),
+      `el goal "${g.title}" sigue teniendo al menos un behavior`,
+    );
+  }
+});

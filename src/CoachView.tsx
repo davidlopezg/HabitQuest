@@ -1847,12 +1847,13 @@ function behaviorsEqual(a: Behavior[], b: Behavior[]): boolean {
 }
 
 /** Aplica el draft completo del GoalDetailOverlay al estado global y rebuilda
- *  el plan de hoy. Una sola llamada = una sola replanificación. */
-function commitGoalDetail(state: CoachState, behaviors: Behavior[], today: string): CoachState {
-  let s: CoachState = {
-    ...state,
-    behaviors: behaviors.map((b) => cloneBehavior(b)),
-  };
+ *  el plan de hoy. Una sola llamada = una sola replanificación.
+ *  IMPORTANTE: el draft solo trae los behaviors DEL goal abierto. El resto de
+ *  goals y sus behaviors se MERGEAN (no se reemplazan), si no se perderían. */
+function commitGoalDetail(state: CoachState, draftBehaviors: Behavior[], today: string): CoachState {
+  const draftById = new Map(draftBehaviors.map((b) => [b.id, cloneBehavior(b)]));
+  const merged = state.behaviors.map((b) => draftById.get(b.id) ?? b);
+  let s: CoachState = { ...state, behaviors: merged };
   const ck = s.checkins.find((c) => c.date === today);
   if (ck) s = rebuildPlan(s, ck);
   return s;
