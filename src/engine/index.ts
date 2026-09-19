@@ -10,6 +10,7 @@ import type {
   CoachCounters,
   CoachReply,
   CoachState,
+  Conversation,
   DayCheckIn,
   DayPlan,
   LogKind,
@@ -17,6 +18,7 @@ import type {
   ReasonCode,
 } from './types.ts';
 import { planDay } from './planner.ts';
+import { classifyReason } from './replanner.ts';
 
 export * from './types.ts';
 export * from './habitadd.ts';
@@ -55,6 +57,7 @@ export function emptyState(): CoachState {
     counters: emptyCounters(),
     memory: { reasonCounts: {}, weakWeekdays: [], lastInsights: [], bestSlotByBehavior: {} },
     chat: [],
+    conversations: [],
   };
 }
 
@@ -280,4 +283,105 @@ export function getOrBuildPlan(
     state: { ...state, plans: { ...state.plans, [checkin.date]: plan } },
     plan,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Conversaciones: archivo + análisis ligero
+// ---------------------------------------------------------------------------
+
+/** Máximo de conversaciones cerradas que guardamos para alimentar al LLM. */
+const MAX_CONVERSATIONS = 30;
+
+/** Heurística ligera de ánimo a partir del texto del usuario. No es análisis
+ *  de sentimiento real: mira palabras clave. Sirve para que el coach pueda
+ *  detectar "te veo cansado" o "estás desmoralizado" en sesiones futuras. */
+export function detectMood(text: string): Conversation['mood'] {
+  const t = text.toLowerCase();
+  if (/(\bgenial\b|\bcontento|\bhecho\b|\bcumplido|\bsuperad|\bc\u00e9ntrate\b|\blograd)/.test(t)) return 'positive';
+  if (/(\bcansad|agotad|exhaust|\bdormid)/.test(t)) return 'tired';
+  if (/(\bfrustrad|rabia|hart[oa]|desmotiv|no\s+puedo\s+m\u00e1s|dejad)/.test(t)) return 'frustrated';
+  if (/(\bhe\s+podido|\blo\s+he\s+conseguid|\bcost\u00f3|\bpero\s+lo\s+hice)/.test(t)) return 'proud';
+  return 'neutral';
+}
+
+/** Mueve la conversación activa (state.chat) al histórico de conversaciones
+ *  cerradas. Devuelve el estado sin cambios si la conversación está vacía.
+ *  Calcula metadata ligera (ánimo, motivo más repetido) para que el LLM
+ *  pueda referenciar sesiones pasadas sin tener que releer todo el JSON.
+ *  El array `conversations` queda limitado a las últimas MAX_CONVERSATIONS. */
+export function archiveConversation(state: CoachState, endedAt?: string): CoachState {
+  const chat = state.chat;
+  if (!chat || chat.length === 0) return state;
+  const firstUser = chat.find((m) => m.role === 'user')?.content?.trim() ?? '';
+  if (!firstUser) return state; // solo respuestas del bot → no archivamos
+  const userTexts = chat.filter((m) => m.role === 'user').map((m) => m.content);
+  const joined = userTexts.join(' \n ');
+  const topReason = topReasonInText(joined);
+  // Ánimo: combinamos señales de todos los turnos del usuario (moda simple).
+  const moods = userTexts.map(detectMood).filter((m): m is NonNullable<Conversation['mood']> => Boolean(m));
+  const mood = pickDominantMood(moods);
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const conv: Conversation = {
+    id,
+    startedAt: chat[0]?.ts ?? new Date().toISOString(),
+    endedAt: endedAt ?? new Date().toISOString(),
+    messageCount: chat.length,
+    firstUserMessage: firstUser.slice(0, 240),
+    topReason,
+    mood,
+    messages: chat.slice(), // copia defensiva
+  };
+  const merged = [...(state.conversations ?? []), conv].slice(-MAX_CONVERSATIONS);
+  return {
+    ...state,
+    conversations: merged,
+    chat: [], // limpiamos la activa
+  };
+}
+
+/** Encuentra el motivo más repetido clasificando cada texto de "no puedo".
+ *  Usa classifyReason del replanner; si ninguno matchea → undefined. */
+function topReasonInText(joined: string): ReasonCode | undefined {
+  // Dividimos por frases para no mal-contar motivos repetidos en la misma frase.
+  const sentences = joined.split(/[\n.!?]+/).map((s) => s.trim()).filter(Boolean);
+  if (sentences.length === 0) return undefined;
+  const counts: Partial<Record<ReasonCode, number>> = {};
+  for (const s of sentences) {
+    const r = classifyReason(s);
+    if (r === 'other') continue;
+    counts[r] = (counts[r] ?? 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] as ReasonCode | undefined;
+}
+
+function pickDominantMood(
+  moods: NonNullable<Conversation['mood']>[],
+): Conversation['mood'] | undefined {
+  if (moods.length === 0) return undefined;
+  type Mood = NonNullable<Conversation['mood']>;
+  const counts: Partial<Record<Mood, number>> = {};
+  for (const m of moods) counts[m] = (counts[m] ?? 0) + 1;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const top = sorted[0]?.[0];
+  return top as Mood | undefined;
+}
+
+/** Versión compacta de las conversaciones recientes para incluir en el prompt
+ *  del LLM. No incluye los mensajes completos (sería demasiado); solo
+ *  metadata + primer mensaje del usuario + razón principal + ánimo. */
+export function summarizeConversations(
+  conversations: Conversation[] | undefined,
+  limit = 5,
+): string {
+  if (!conversations || conversations.length === 0) return '';
+  const recent = conversations.slice(-limit);
+  const lines = recent.map((c) => {
+    const d = c.endedAt.slice(0, 10);
+    const mood = c.mood ? `, ánimo=${c.mood}` : '';
+    const reason = c.topReason ? `, motivo=${c.topReason}` : '';
+    const first = c.firstUserMessage.replace(/\s+/g, ' ').slice(0, 120);
+    return `• ${d} (${c.messageCount} msgs${mood}${reason}): "${first}${first.length >= 120 ? '…' : ''}"`;
+  });
+  return `Conversaciones recientes con el coach (resumen, las más nuevas primero):\n${lines.join('\n')}`;
 }

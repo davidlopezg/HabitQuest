@@ -137,6 +137,7 @@ function loadState(): CoachState {
       counters: { ...base.counters, ...((parsed as CoachState).counters ?? {}) },
       memory: { ...base.memory, ...((parsed as CoachState).memory ?? {}) },
       chat: Array.isArray((parsed as CoachState).chat) ? (parsed as CoachState).chat : [],
+      conversations: Array.isArray((parsed as CoachState).conversations) ? (parsed as CoachState).conversations : [],
     } as CoachState;
   } catch {
     // JSON corrupto → no perdemos la app; empezamos limpio.

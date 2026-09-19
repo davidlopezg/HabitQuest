@@ -8,7 +8,7 @@
  */
 
 import type { CoachState } from '../../engine/index.ts';
-import { analyzePatterns, classifyReason } from '../../engine/index.ts';
+import { analyzePatterns, classifyReason, summarizeConversations } from '../../engine/index.ts';
 import { adherence, reasonDistribution } from '../../engine/index.ts';
 import { levelDef } from '../../engine/index.ts';
 import { todayKey, toHHMM, WEEKDAY_ES, weekdayOf } from '../../engine/index.ts';
@@ -75,6 +75,10 @@ export function summarizeState(state: CoachState, date: string): string {
   if (topReason) lines.push(`Motivo más frecuente de "no puedo" (últimos 14 días): ${topReason[0]} (${topReason[1]} veces).`);
   if (state.counters.resilienceWins > 0) lines.push(`Victorias de resiliencia totales: ${state.counters.resilienceWins}.`);
   lines.push(`XP total del coach: ${state.counters.xp ?? 0}.`);
+  // Histórico de conversaciones cerradas: alimenta al LLM para análisis
+  // retrospectivo (tendencias, ánimos, motivos recurrentes).
+  const convSummary = summarizeConversations(state.conversations, 5);
+  if (convSummary) lines.push(convSummary);
   return lines.join('\n');
 }
 
@@ -100,6 +104,15 @@ export function offlineCoachReply(state: CoachState, text: string): string {
 
   if (t.includes('aprendid') || t.includes('conoces') || t.includes('qué sabes')) {
     return learnedInsights(state);
+  }
+  if (/voy\s+(mejor|avanz|progres)|estoy\s+mejorando|mi\s+evoluci|he\s+mejorado/.test(t)) {
+    return trendAnalysis(state);
+  }
+  if (/qu\u00e9\s+(debo|deber\u00eda|tendr\u00eda)\s+cambiar|qu\u00e9\s+ajustar|qu\u00e9\s+modific/.test(t)) {
+    return whatToChange(state);
+  }
+  if (/por\s+qu\u00e9\s+no\s+(he\s+)?(puedo|he\s+podido|consigo|complet|logr)/.test(t)) {
+    return whyNotCompleting(state);
   }
   if (t.includes('por qué') && (t.includes('fall') || t.includes('fracas') || t.includes('no consigo'))) {
     const a = b ? adherence(state.logs, b, todayKey(), 7) : undefined;
@@ -218,4 +231,142 @@ export async function chatWithCoach(
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Análisis deterministas a partir de logs + conversaciones cerradas.
+// Alimentan los chips "¿voy mejorando?", "¿qué tendría que cambiar?" y
+// "¿por qué no he podido completar X?" del coach en modo local. Cuando hay
+// LLM, estos análisis también se incluyen en el SYSTEM_PROMPT vía
+// summarizeState para que la IA los use como base y los humanice.
+// ---------------------------------------------------------------------------
+
+/** Tendencia de adherencia comparando 7d vs 14d. Usa también el histórico de
+ *  conversaciones para detectar si el ánimo del usuario ha mejorado o
+ *  empeorado con el tiempo. */
+export function trendAnalysis(state: CoachState): string {
+  const today = todayKey();
+  const out: string[] = [];
+  const behaviors = state.behaviors.filter((b) => b.enabled);
+  if (behaviors.length === 0) {
+    return 'Aún no tienes hábitos activos. Dime qué quieres conseguir y arrancamos.';
+  }
+  for (const b of behaviors.slice(0, 3)) {
+    const a7 = adherence(state.logs, b, today, 7).rate;
+    const a14 = adherence(state.logs, b, today, 14).rate;
+    const a30 = adherence(state.logs, b, today, 30).rate;
+    const p7 = Math.round(a7 * 100);
+    const p14 = Math.round(a14 * 100);
+    const delta = p7 - p14;
+    let verdict: string;
+    if (state.logs.filter((l) => l.behaviorId === b.id).length < 5) {
+      verdict = 'aún con pocos datos para pronunciarme';
+    } else if (delta >= 10) {
+      verdict = `mejoras claramente (+${delta} pp vs 14d)`;
+    } else if (delta >= 0) {
+      verdict = delta === 0 ? `estable (${p7}% 7d, ${p14}% 14d)` : `ligera mejora (+${delta} pp)`;
+    } else {
+      verdict = `bajando ${delta} pp: toca revisar dificultad o momento`;
+    }
+    out.push(`• ${b.icon} ${b.name}: 7d ${p7}% · 14d ${p14}% · 30d ${Math.round(a30 * 100)}% — ${verdict}.`);
+  }
+  // Cruzar con ánimo de conversaciones pasadas si hay.
+  const convs = (state.conversations ?? []).slice(-5);
+  const recentMoods = convs.map((c) => c.mood).filter(Boolean) as string[];
+  const tiredCount = recentMoods.filter((m) => m === 'tired' || m === 'frustrated').length;
+  const positiveCount = recentMoods.filter((m) => m === 'positive' || m === 'proud').length;
+  if (convs.length >= 2) {
+    const moodNote =
+      tiredCount > positiveCount
+        ? `En tus últimas ${convs.length} conversaciones el ánimo ha sido más bien cansado/frustrado: si los datos también bajan, lo más probable es que el plan pida menos intensidad, no más voluntad.`
+        : positiveCount > tiredCount
+          ? `En tus últimas ${convs.length} conversaciones el ánimo ha sido positivo: tu sistema está funcionando, no lo cambies solo por un día malo.`
+          : `En tus últimas ${convs.length} conversaciones el ánimo ha sido neutro: los datos mandan.`;
+    out.push(moodNote);
+  }
+  if (out.length === 0) out.push('Necesito más días de datos para ver tendencia.');
+  return 'Vamos a los datos:\n' + out.join('\n');
+}
+
+/** "¿Qué debería cambiar?" — combina patrones detectados (analyzePatterns) con
+ *  los motivos más repetidos y la dificultad actual de cada hábito. */
+export function whatToChange(state: CoachState): string {
+  const today = todayKey();
+  const out: string[] = [];
+  const reasons = reasonDistribution(state.logs, today, 21);
+  const top = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  if (top.length > 0 && top[0][1] >= 2) {
+    const [code, count] = top[0];
+    const hint: Record<string, string> = {
+      work: 'mueve los hábitos a una franja más protegida del trabajo',
+      no_time: 'baja la versión objetivo 1 nivel durante 1 semana',
+      tired: 'ancla el hábito a algo que ya hagas al despertar (antes del móvil)',
+      outside: 'prepara la versión “fuera de casa” (1 min sin material)',
+      family: 'reserva un hueco fijo a una hora en que la familia no te necesite',
+      illness: 'activa modo mantenimiento y descansa: volveremos a subir cuando estés bien',
+      no_motivation: 'reduce al mínimo y añade una recompensa inmediata tras hacerlo',
+      distraction: 'deja el móvil en otra habitación mientras lo haces',
+    };
+    out.push(`• Tu obstáculo más repetido (${count}× en 21d) es "${code}". Prueba a ${hint[code] ?? 'replantear este punto'} y vemos si en 7 días cambia el dato.`);
+  } else {
+    out.push('• Sin un obstáculo dominante claro. Probablemente toca ajustar la dificultad o el horario, no el motivo.');
+  }
+  const patterns = analyzePatterns(state, { sinceDays: 21 }).slice(0, 2);
+  for (const p of patterns) out.push(`• ${p.message}`);
+  const convs = (state.conversations ?? []).slice(-3);
+  const convReasons = convs.map((c) => c.topReason).filter(Boolean) as string[];
+  if (convReasons.length > 0) {
+    const fromConvs = mode(convReasons);
+    if (fromConvs && !top.some(([c]) => c === fromConvs)) {
+      out.push(`• En tus últimas conversaciones has mencionado "${fromConvs}" como motivo. Cuéntame más la próxima vez: el plan debería poder adaptarse.`);
+    }
+  }
+  if (out.length === 0) return 'Necesito más datos. Sigue 5–7 días y te propondré ajustes concretos.';
+  return 'Tres cosas que probablemente ayuden:\n' + out.join('\n');
+}
+
+/** "¿Por qué no he podido completar X?" — para cada hábito activo, mira la
+ *  racha, los motivos recientes y la dificultad del nivel actual. */
+export function whyNotCompleting(state: CoachState): string {
+  const today = todayKey();
+  const out: string[] = [];
+  const behaviors = state.behaviors.filter((b) => b.enabled);
+  if (behaviors.length === 0) return 'No tienes hábitos activos: dime qué quieres conseguir y arrancamos.';
+  let touched = 0;
+  for (const b of behaviors) {
+    if (touched >= 3) break;
+    const a7 = adherence(state.logs, b, today, 7).rate;
+    const reasonsForB = state.logs
+      .filter((l) => l.behaviorId === b.id && l.date >= addDays(today, -14))
+      .map((l) => l.reasonCode)
+      .filter(Boolean) as string[];
+    const reasonCount: Record<string, number> = {};
+    for (const r of reasonsForB) reasonCount[r] = (reasonCount[r] ?? 0) + 1;
+    const sorted = Object.entries(reasonCount).sort((a, c) => c[1] - a[1]);
+    const def = levelDef(b);
+    const target = def?.minutes ?? 0;
+    if (a7 >= 0.6) continue; // este va bien, no hace falta analizarlo
+    touched++;
+    const main = sorted[0]?.[0] ?? 'sin motivo claro (puede ser distracción u olvidos)';
+    const overTarget = target > 10 ? `el objetivo actual (${target} min) puede ser demasiado alto para tu momento actual` : `el objetivo (${target} min) es razonable, mira más bien el horario`;
+    out.push(`• ${b.icon} ${b.name}: adherencia 7d ${Math.round(a7 * 100)}%. Motivo más repetido: "${main}". Probablemente ${overTarget}.`);
+  }
+  if (out.length === 0) {
+    return 'Tus hábitos van bien en adherencia 7d. Si sientes que "no estás completando", es posible que elijas metas muy ambiciosas: mira los niveles del catálogo y considera bajar 1 nivel durante una semana.';
+  }
+  return 'Lo que veo en tus últimas 2 semanas:\n' + out.join('\n');
+}
+
+/** Moda simple sobre strings (motivo, ánimo, etc.). */
+function mode(items: string[]): string | undefined {
+  if (items.length === 0) return undefined;
+  const counts: Record<string, number> = {};
+  for (const i of items) counts[i] = (counts[i] ?? 0) + 1;
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

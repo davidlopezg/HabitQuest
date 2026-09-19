@@ -217,7 +217,8 @@ export interface CoachState {
   plans: Record<string, DayPlan>; // por fecha
   counters: CoachCounters;
   memory: UserMemory;
-  chat: ChatMessage[]; // conversación con el coach (se conserva en memoria de usuario)
+  chat: ChatMessage[]; // conversación ACTIVA con el coach (en curso)
+  conversations: Conversation[]; // conversaciones CERRADAS (histórico para análisis del LLM)
 }
 
 /** Eventos de gamificación generados por el motor (para integrar con XP actual). */
@@ -251,4 +252,22 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   ts: string; // ISO
+}
+
+/** Una conversación cerrada con el coach. Persistida en Supabase para que el
+ *  LLM pueda analizarlas en futuras sesiones (tendencias, motivos, ánimos).
+ *  Solo guardamos metadata ligera + mensajes para análisis retrospectivo;
+ *  la conversación activa (en curso) sigue viviendo en `state.chat`. */
+export interface Conversation {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  messageCount: number;
+  /** Primer mensaje del usuario en la conversación (para identificar el tema). */
+  firstUserMessage: string;
+  /** Motivo más repetido en los "no puedo" de esta conversación (si aplica). */
+  topReason?: ReasonCode;
+  /** Ánimo detectado en la conversación (heurística ligera, opcional). */
+  mood?: 'positive' | 'neutral' | 'frustrated' | 'tired' | 'proud';
+  messages: ChatMessage[]; // contenido completo para análisis
 }

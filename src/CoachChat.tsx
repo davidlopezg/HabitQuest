@@ -14,6 +14,7 @@ import type { ChatMessage, CoachState, PlanItem } from './engine/index.ts';
 import {
   addBehaviorToState,
   applyCoachReply,
+  archiveConversation,
   CATALOG,
   classifyReason,
   handleCannot,
@@ -29,16 +30,19 @@ import {
   learnedInsights,
   looksLikeCannot,
   offlineCoachReply,
+  trendAnalysis,
+  whatToChange,
+  whyNotCompleting,
 } from './services/ai/coach.ts';
 import { getAIConfig } from './services/ai/config.ts';
 
 const CHIPS = [
   '🙅 No puedo hacerlo hoy',
-  '📉 ¿Por qué sigo fallando?',
+  '📈 ¿Voy mejorando?',
+  '🔧 ¿Qué tendría que cambiar?',
   '🧠 ¿Qué has aprendido sobre mis hábitos?',
   '➕ Añade un hábito de meditación a las 7:30',
   '🕐 ¿Cuál es mi mejor horario?',
-  '🚀 Quiero llegar antes a mi objetivo',
 ];
 
 interface Props {
@@ -137,6 +141,12 @@ export default function CoachChat({ open, onClose, state, setState, today }: Pro
         text.toLowerCase().includes('qué has aprendido')
       ) {
         setFinal(s, learnedInsights(s));
+      } else if (/voy\s+(mejor|avanz|progres)|estoy\s+mejorando|mi\s+evoluci|he\s+mejorado/.test(text.toLowerCase())) {
+        setFinal(s, trendAnalysis(s));
+      } else if (/qu\u00e9\s+(debo|deber\u00eda|tendr\u00eda)\s+cambiar|qu\u00e9\s+ajustar|qu\u00e9\s+modific/.test(text.toLowerCase())) {
+        setFinal(s, whatToChange(s));
+      } else if (/por\s+qu\u00e9\s+no\s+(he\s+)?(puedo|he\s+podido|consigo|complet|logr)/.test(text.toLowerCase())) {
+        setFinal(s, whyNotCompleting(s));
       } else if (allDone) {
         setFinal(s, 'Hoy ya has completado todo lo pendiente. Si quieres, me cuentas qué te gustaría ajustar para mañana o cómo te ha ido el día.');
       } else if (cfg.enabled) {
@@ -192,14 +202,22 @@ export default function CoachChat({ open, onClose, state, setState, today }: Pro
               <div className="flex items-center gap-1">
                 {state.chat.length > 0 && (
                   <button
-                    onClick={() => setState((p) => ({ ...p, chat: [] }))}
-                    className="p-2 text-rpg-text-secondary hover:text-red-400"
-                    title="Vaciar conversación"
+                    onClick={() => setState((p) => archiveConversation(p))}
+                    className="p-2 text-rpg-text-secondary hover:text-amber-400"
+                    title="Archivar conversación (se guarda en tu histórico)"
                   >
                     <Trash2 size={17} />
                   </button>
                 )}
-                <button onClick={onClose} className="p-2 text-rpg-text-secondary">
+                <button
+                  onClick={() => {
+                    // Al cerrar, archivamos la conversación si tiene mensajes
+                    // para que el coach pueda analizarla en futuras sesiones.
+                    setState((p) => (p.chat.length > 0 ? archiveConversation(p) : p));
+                    onClose();
+                  }}
+                  className="p-2 text-rpg-text-secondary"
+                >
                   <X size={20} />
                 </button>
               </div>

@@ -40,6 +40,9 @@ import {
   parseAddHabitRequest,
   addBehaviorToState,
   ritualStepFor,
+  archiveConversation,
+  detectMood,
+  summarizeConversations,
 } from './index.ts';
 
 // ---------- helpers ----------
@@ -824,4 +827,93 @@ test('regresión: editar la fase de un hábito (customLevels) actualiza el plan 
     study.startRitual![0],
     'study sin personalizar de nuevo: label = ritual step (comportamiento original)',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Hist\u00f3rico de conversaciones: archivado + an\u00e1lisis con LLM.
+// ---------------------------------------------------------------------------
+
+test('archiveConversation: chat vac\u00edo → no archiva nada', () => {
+  const s = emptyState();
+  const after = archiveConversation(s);
+  assert.equal(after.conversations.length, 0);
+  assert.equal(after.chat.length, 0);
+});
+
+test('archiveConversation: solo respuestas del bot → no archiva (sin firstUser)', () => {
+  let s = emptyState();
+  s.chat = [{ role: 'assistant', content: 'Hola, soy tu coach.', ts: '2025-06-15T08:00:00Z' }];
+  const after = archiveConversation(s);
+  assert.equal(after.conversations.length, 0);
+  assert.equal(after.chat.length, 1, 'no se limpia si no hay mensaje del usuario');
+});
+
+test('archiveConversation: mueve chat → conversations y limpia chat', () => {
+  let s = emptyState();
+  s.chat = [
+    { role: 'assistant', content: 'Hola, ¿qué tal?', ts: '2025-06-15T08:00:00Z' },
+    { role: 'user', content: 'Hoy no he podido correr, estoy agotado', ts: '2025-06-15T08:01:00Z' },
+    { role: 'assistant', content: 'OK, modo mantenimiento.', ts: '2025-06-15T08:01:30Z' },
+  ];
+  const after = archiveConversation(s, '2025-06-15T08:02:00Z');
+  assert.equal(after.conversations.length, 1, 'se archiva una conversaci\u00f3n');
+  assert.equal(after.chat.length, 0, 'chat queda vac\u00edo');
+  const c = after.conversations[0];
+  assert.equal(c.firstUserMessage, 'Hoy no he podido correr, estoy agotado');
+  assert.equal(c.messageCount, 3);
+  assert.equal(c.topReason, 'tired', 'debe detectar "agotado" como motivo');
+  assert.equal(c.mood, 'tired', 'debe detectar \u00e1nimo cansado');
+  assert.equal(c.messages.length, 3, 'se guardan todos los mensajes');
+});
+
+test('archiveConversation: cap a 30 conversaciones (las m\u00e1s viejas se descartan)', () => {
+  let s = emptyState();
+  for (let i = 0; i < 35; i++) {
+    s.chat = [
+      { role: 'user', content: `Mensaje ${i}`, ts: `2025-06-${String(15 + (i % 10)).padStart(2, '0')}T08:00:00Z` },
+    ];
+    s = archiveConversation(s, `2025-06-${String(15 + (i % 10)).padStart(2, '0')}T08:01:00Z`);
+  }
+  assert.equal(s.conversations.length, 30);
+  // Las 5 primeras (m\u00e1s antiguas) deben haberse descartado: la primera superviviente
+  // deber\u00eda tener el primer mensaje con i=5.
+  assert.match(s.conversations[0].firstUserMessage, /^Mensaje 5/);
+});
+
+test('summarizeConversations: devuelve resumen legible', () => {
+  const convs = [
+    {
+      id: 'a',
+      startedAt: '2025-06-13T08:00:00Z',
+      endedAt: '2025-06-13T08:05:00Z',
+      messageCount: 4,
+      firstUserMessage: 'No he podido correr',
+      topReason: 'tired' as const,
+      mood: 'tired' as const,
+      messages: [],
+    },
+    {
+      id: 'b',
+      startedAt: '2025-06-15T08:00:00Z',
+      endedAt: '2025-06-15T08:05:00Z',
+      messageCount: 2,
+      firstUserMessage: 'Hoy s\u00ed lo he hecho',
+      topReason: undefined,
+      mood: 'positive' as const,
+      messages: [],
+    },
+  ];
+  const out = summarizeConversations(convs, 5);
+  assert.match(out, /2025-06-13/);
+  assert.match(out, /tired/);
+  assert.match(out, /No he podido correr/);
+  assert.match(out, /2025-06-15/);
+  assert.match(out, /positive/);
+});
+
+test('detectMood: heur\u00edsticas b\u00e1sicas', () => {
+  assert.equal(detectMood('Hoy estoy cansado, no puedo m\u00e1s'), 'tired');
+  assert.equal(detectMood('Genial, lo he logrado!'), 'positive');
+  assert.equal(detectMood('Estoy harto de no poder'), 'frustrated');
+  assert.equal(detectMood('Hoy fue un d\u00eda normalito'), 'neutral');
 });
