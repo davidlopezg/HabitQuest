@@ -43,6 +43,7 @@ import {
   REASON_LABEL,
   reasonDistribution,
   recommendLevel,
+  rebuildGoalBehaviors,
   rebuildPlan,
   recordCompletion,
   removeGoal,
@@ -979,6 +980,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             today={today}
             onClose={() => setDetailGoalId(null)}
             onCommit={(behaviors) => setCs((prev) => commitGoalDetail(prev, behaviors, today))}
+            onRebuildGoal={(goalId) => setCs((prev) => rebuildGoalBehaviors(prev, goalId, today))}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
               introduceNextBehavior(goalId);
@@ -1801,6 +1803,8 @@ interface GoalDetailProps {
   /** Aplica todos los cambios del draft al estado global de una vez y rebuilda
    *  el plan. La ficha ya cerró el overlay al llamar a este callback. */
   onCommit: (behaviors: Behavior[]) => void;
+  /** Regenera los behaviors de un objetivo huérfano usando su goal.raw. */
+  onRebuildGoal: (goalId: string) => void;
   onIntroduce: (goalId: string) => void;
   onDelete: (goalId: string) => void;
   canIntroduce: boolean;
@@ -1867,6 +1871,7 @@ function GoalDetailOverlay({
   today,
   onClose,
   onCommit,
+  onRebuildGoal,
   onIntroduce,
   onDelete,
   canIntroduce,
@@ -1964,9 +1969,23 @@ function GoalDetailOverlay({
         {/* Cuerpo scrollable */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {behaviors.length === 0 && (
-            <p className="text-sm text-rpg-text-secondary text-center py-6">
-              Este objetivo aún no tiene hábitos activos.
-            </p>
+            <div className="text-center py-6 space-y-3">
+              <p className="text-sm text-rpg-text-secondary">
+                Este objetivo aún no tiene hábitos activos.
+              </p>
+              {/* Recuperación: el objetivo quedó huérfano (sin behaviors) tras
+                  un bug antiguo. Ofrecemos regenerarlos a partir del texto
+                  original del objetivo (goal.raw) usando el mismo goalId. */}
+              {goal.raw && (
+                <button
+                  onClick={() => onRebuildGoal(goal.id)}
+                  className="px-4 py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl text-sm font-bold"
+                  title="Vuelve a generar los hábitos de este objetivo a partir del texto original"
+                >
+                  🔧 Regenerar hábitos de este objetivo
+                </button>
+              )}
+            </div>
           )}
 
           {behaviors.map((origB) => {

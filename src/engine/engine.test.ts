@@ -33,6 +33,7 @@ import {
   applyDecomposed,
   emptyState,
   getOrBuildPlan,
+  rebuildGoalBehaviors,
   rebuildPlan,
   recordCompletion,
   removeGoal,
@@ -954,4 +955,39 @@ test('commitGoalDetail preserva behaviors de OTROS goals (regresión)', () => {
       `el goal "${g.title}" sigue teniendo al menos un behavior`,
     );
   }
+});
+
+test('rebuildGoalBehaviors: regenera los behaviors de un objetivo huérfano', () => {
+  // Caso del usuario tras el bug: el goal existe pero sus behaviors se borraron.
+  const today = '2025-06-15';
+  let s = emptyState();
+  s = applyDecomposed(s, decompose('Quiero ponerme en forma', today));
+  const goalId = s.goals[0].id;
+  assert.ok(s.behaviors.some((b) => b.goalId === goalId), 'arrancamos con behavior');
+
+  // Simulamos el bug: behaviors desaparecen.
+  s = { ...s, behaviors: [] };
+  assert.ok(!s.behaviors.some((b) => b.goalId === goalId), 'simulado: sin behaviors');
+
+  // Recuperación.
+  const recovered = rebuildGoalBehaviors(s, goalId, today);
+  const regenerated = recovered.behaviors.filter((b) => b.goalId === goalId);
+  assert.equal(regenerated.length, 1, 'se regenera 1 behavior para el goal huérfano');
+  assert.match(regenerated[0].name, /Caminar/i, 'es el hábito esperado del template walk');
+});
+
+test('rebuildGoalBehaviors: no duplica si el goal ya tiene behaviors', () => {
+  const today = '2025-06-15';
+  let s = emptyState();
+  s = applyDecomposed(s, decompose('Quiero ponerme en forma', today));
+  const goalId = s.goals[0].id;
+  const before = s.behaviors.length;
+  const after = rebuildGoalBehaviors(s, goalId, today);
+  assert.equal(after.behaviors.length, before, 'no añade behaviors si ya los hay');
+});
+
+test('rebuildGoalBehaviors: devuelve el mismo estado si el goal no existe', () => {
+  const s = emptyState();
+  const after = rebuildGoalBehaviors(s, 'goal_inexistente', '2025-06-15');
+  assert.equal(after, s, 'no-op defensivo');
 });

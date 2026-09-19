@@ -135,9 +135,14 @@ function canonicalTitle(raw: string, preset: Preset): string {
 }
 
 /** Convierte el objetivo del usuario en Goal + comportamientos iniciales. */
-export function decompose(raw: string, today: string = todayKey()): DecomposedOutcome {
+export function decompose(
+  raw: string,
+  today: string = todayKey(),
+  goalIdOverride?: string,
+): DecomposedOutcome {
   const preset = findPreset(raw);
-  const goalId = `goal_${today.replace(/-/g, '')}_${Math.random().toString(36).slice(2, 7)}`;
+  const goalId =
+    goalIdOverride ?? `goal_${today.replace(/-/g, '')}_${Math.random().toString(36).slice(2, 7)}`;
   const goal: Goal = {
     id: goalId,
     raw: raw.trim(),

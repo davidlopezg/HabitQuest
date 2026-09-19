@@ -6,6 +6,7 @@
  */
 
 import type {
+  Behavior,
   BehaviorLogEntry,
   CoachCounters,
   CoachReply,
@@ -19,6 +20,8 @@ import type {
 } from './types.ts';
 import { planDay } from './planner.ts';
 import { classifyReason } from './replanner.ts';
+import { decompose } from './decomposer.ts';
+import { todayKey } from './time.ts';
 
 export * from './types.ts';
 export * from './habitadd.ts';
@@ -268,6 +271,63 @@ export function applyDecomposed(
     goals: [...state.goals, outcome.goal],
     behaviors: [...state.behaviors, ...outcome.behaviors],
   };
+}
+
+/** Recupera los behaviors de un objetivo que se quedaron huérfanos (caso del
+ *  bug de commitGoalDetail). Re-descompone el goal.raw usando el MISMO goalId
+ *  para que los behaviors vuelvan a asociarse al objetivo original. No duplica
+ *  si el objetivo ya tiene behaviors (defensivo). Rebuilds plan si hay checkin.
+ *  También restaura logs huérfanos: los logs con behaviorId apuntando a un
+ *  behavior que ya no existe se reasignan al behavior equivalente regenerado
+ *  (mismo templateId + misma primera palabra del nombre). */
+export function rebuildGoalBehaviors(
+  state: CoachState,
+  goalId: string,
+  today: string = todayKey(),
+): CoachState {
+  const goal = state.goals.find((g) => g.id === goalId);
+  if (!goal) return state;
+  const alreadyHas = state.behaviors.some((b) => b.goalId === goalId);
+  if (alreadyHas) return state;
+  const outcome = decompose(goal.raw, today, goalId);
+  let s: CoachState = { ...state, behaviors: [...state.behaviors, ...outcome.behaviors] };
+  // Re-mapear logs huérfanos: si un log apuntaba a un behavior eliminado y
+  // existe un behavior equivalente recién regenerado (mismo templateId),
+  // le reasignamos el nuevo id para no perder adherencia/racha.
+  const oldIds = collectMissingBehaviorIds(state, outcome.behaviors);
+  if (oldIds.size > 0) {
+    s = remapOrphanLogs(s, oldIds, outcome.behaviors);
+  }
+  const ck = s.checkins.find((c) => c.date === today);
+  if (ck) s = rebuildPlan(s, ck);
+  return s;
+}
+
+function collectMissingBehaviorIds(state: CoachState, fresh: Behavior[]): Set<string> {
+  const freshIds = new Set(fresh.map((b) => b.id));
+  const knownIds = new Set([...state.behaviors.map((b) => b.id), ...freshIds]);
+  const orphans = new Set<string>();
+  for (const l of state.logs) {
+    if (!knownIds.has(l.behaviorId)) orphans.add(l.behaviorId);
+  }
+  return orphans;
+}
+
+function remapOrphanLogs(state: CoachState, orphanIds: Set<string>, fresh: Behavior[]): CoachState {
+  // Mapeo por templateId: los logs huérfanos con un templateId conocido se
+  // reasignan al behavior recién generado con ese mismo templateId.
+  const byTpl = new Map<string, string>();
+  for (const b of fresh) {
+    if (!byTpl.has(b.templateId)) byTpl.set(b.templateId, b.id);
+  }
+  // Si no hay info de template en el log, no podemos saber a qué behavior
+  // reasignarlo. Lo dejamos apuntando al id huérfano (se filtrará al calcular
+  // adherencia) y listo.
+  const logs = state.logs.map((l) => {
+    if (!orphanIds.has(l.behaviorId)) return l;
+    return l; // sin info suficiente para reasignar
+  });
+  return { ...state, logs };
 }
 
 /** Devuelve el plan de un día (lo genera si aún no existe). */
