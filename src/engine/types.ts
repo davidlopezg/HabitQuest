@@ -254,6 +254,18 @@ export interface ChatMessage {
   ts: string; // ISO
 }
 
+/** Un hecho relevante extraído del texto del usuario en una conversación.
+ *  Se muestra como tag en Insights y se inyecta al SYSTEM_PROMPT para que el
+ *  LLM tenga contexto personal (trabajo, familia, horarios que rinde...).
+ *  Determinista, no requiere API: lo extrae el motor al archivar la conversación. */
+export interface ExtractedFact {
+  category: 'work' | 'family' | 'health' | 'travel' | 'time_pref' | 'place' | 'activity_pref' | 'obstacle';
+  /** Frase corta legible ("Trabaja en remoto / desde casa"). */
+  text: string;
+  /** Fecha ISO de la conversación de la que salió (YYYY-MM-DD). */
+  sourceDate: string;
+}
+
 /** Una conversación cerrada con el coach. Persistida en Supabase para que el
  *  LLM pueda analizarlas en futuras sesiones (tendencias, motivos, ánimos).
  *  Solo guardamos metadata ligera + mensajes para análisis retrospectivo;
@@ -269,5 +281,8 @@ export interface Conversation {
   topReason?: ReasonCode;
   /** Ánimo detectado en la conversación (heurística ligera, opcional). */
   mood?: 'positive' | 'neutral' | 'frustrated' | 'tired' | 'proud';
+  /** Hechos deterministas extraídos del texto del usuario (contexto personal).
+   *  Puede faltar en conversaciones muy viejas (migramos al vuelo). */
+  facts?: ExtractedFact[];
   messages: ChatMessage[]; // contenido completo para análisis
 }

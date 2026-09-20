@@ -8,7 +8,12 @@
  */
 
 import type { CoachState } from '../../engine/index.ts';
-import { analyzePatterns, classifyReason, summarizeConversations } from '../../engine/index.ts';
+import {
+  analyzePatterns,
+  classifyReason,
+  summarizeConversations,
+  summarizeFacts,
+} from '../../engine/index.ts';
 import { adherence, reasonDistribution } from '../../engine/index.ts';
 import { levelDef } from '../../engine/index.ts';
 import { todayKey, toHHMM, WEEKDAY_ES, weekdayOf } from '../../engine/index.ts';
@@ -79,6 +84,11 @@ export function summarizeState(state: CoachState, date: string): string {
   // retrospectivo (tendencias, ánimos, motivos recurrentes).
   const convSummary = summarizeConversations(state.conversations, 5);
   if (convSummary) lines.push(convSummary);
+  // Hechos relevantes extraídos del texto del usuario en conversaciones
+  // pasadas (trabajo, familia, horarios, lesiones, preferencias…). Es lo que
+  // el coach "retiene" sobre la persona y le permite personalizar respuestas.
+  const factsSummary = summarizeFacts(state.conversations, 20);
+  if (factsSummary) lines.push(factsSummary);
   return lines.join('\n');
 }
 

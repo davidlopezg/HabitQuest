@@ -33,10 +33,12 @@ import {
   applyDecomposed,
   CATALOG,
   classifyReason,
+  collectAllFacts,
   consolidationEvent,
   decompose,
   emptyState,
   evaluateCompletion,
+  FACT_CATEGORY_META,
   getOrBuildPlan,
   handleCannot,
   levelDef,
@@ -58,6 +60,7 @@ import {
   WEEKDAY_ES,
   weekdayOf,
 } from './engine/index.ts';
+import type { ExtractedFact } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
@@ -2443,6 +2446,14 @@ function InsightsOverlay({ state, behaviors, today, onClose, onAskChat }: Insigh
   const consolidatedNames = state.counters.consolidated
     .map((id) => state.behaviors.find((b) => b.id === id)?.name)
     .filter(Boolean);
+  // Hechos extraídos del texto del usuario en conversaciones pasadas
+  // (contexto laboral, familia, horarios que rinde, obstáculos…). Ya vienen
+  // deduplicados y ordenados de más reciente a más antiguo.
+  const factsForInsights: ExtractedFact[] = collectAllFacts(state.conversations);
+  // Cuántas conversaciones distintas han aportado al menos un hecho.
+  const uniqueConversationDates = new Set(
+    factsForInsights.map((f) => f.sourceDate).filter(Boolean),
+  ).size;
 
   return (
     <motion.div
@@ -2594,6 +2605,41 @@ function InsightsOverlay({ state, behaviors, today, onClose, onAskChat }: Insigh
               <p className="text-xs leading-relaxed">
                 {consolidatedNames.join(' · ')} ya aguantan solos: la dificultad puede subir o toca
                 introducir el siguiente paso.
+              </p>
+            </div>
+          )}
+
+          {/* Lo que el coach retiene del usuario (hechos extraídos de
+              conversaciones pasadas). Antes del CTA para que la persona
+              vea qué contexto va a tener el coach al preguntarle. */}
+          {factsForInsights.length > 0 && (
+            <div className="rpg-card p-4 bg-black/20">
+              <div className="flex items-baseline justify-between mb-2 gap-2">
+                <p className="text-[10px] uppercase tracking-wider text-rpg-text-secondary">
+                  Lo que retengo de ti
+                </p>
+                <p className="text-[9px] text-rpg-text-secondary">
+                  de {uniqueConversationDates} conversa{uniqueConversationDates === 1 ? 'ción' : 'ciones'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {factsForInsights.map((f, i) => {
+                  const meta = FACT_CATEGORY_META[f.category];
+                  return (
+                    <span
+                      key={`${f.category}-${f.text}-${i}`}
+                      title={`${meta.label} · visto por última vez el ${f.sourceDate || '?'}`}
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full font-semibold ${meta.color}`}
+                    >
+                      <span aria-hidden="true">{meta.emoji}</span>
+                      <span>{f.text}</span>
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[10px] text-rpg-text-secondary leading-relaxed">
+                Esto es lo que tengo en cuenta cuando te respondo: contexto, horarios y
+                obstáculos que me has contado. Si algo ha cambiado, dímelo en el chat.
               </p>
             </div>
           )}

@@ -22,6 +22,17 @@ import { planDay } from './planner.ts';
 import { classifyReason } from './replanner.ts';
 import { decompose } from './decomposer.ts';
 import { todayKey } from './time.ts';
+import { extractFactsFromConversation } from './conversationFacts.ts';
+
+// Re-export de las funciones nuevas del módulo de hechos.
+// Los tipos (ExtractedFact, FactCategory) vienen de types.ts para evitar
+// duplicación: conversationFacts.ts los importa desde ahí.
+export {
+  collectAllFacts,
+  extractFactsFromConversation,
+  summarizeFacts,
+  FACT_CATEGORY_META,
+} from './conversationFacts.ts';
 
 export * from './types.ts';
 export * from './habitadd.ts';
@@ -381,16 +392,22 @@ export function archiveConversation(state: CoachState, endedAt?: string): CoachS
   const moods = userTexts.map(detectMood).filter((m): m is NonNullable<Conversation['mood']> => Boolean(m));
   const mood = pickDominantMood(moods);
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const endedAtIso = endedAt ?? new Date().toISOString();
+  // Extraemos hechos deterministas (contexto personal, preferencias, obstáculos…)
+  // ANTES de cerrar la conversación, así quedan persistidos junto al resto de
+  // metadata y no hay que re-procesar el texto cada vez que se resumen.
   const conv: Conversation = {
     id,
     startedAt: chat[0]?.ts ?? new Date().toISOString(),
-    endedAt: endedAt ?? new Date().toISOString(),
+    endedAt: endedAtIso,
     messageCount: chat.length,
     firstUserMessage: firstUser.slice(0, 240),
     topReason,
     mood,
+    facts: [],
     messages: chat.slice(), // copia defensiva
   };
+  conv.facts = extractFactsFromConversation(conv);
   const merged = [...(state.conversations ?? []), conv].slice(-MAX_CONVERSATIONS);
   return {
     ...state,

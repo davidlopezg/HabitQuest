@@ -44,7 +44,11 @@ import {
   archiveConversation,
   detectMood,
   summarizeConversations,
+  collectAllFacts,
+  extractFactsFromConversation,
+  summarizeFacts,
 } from './index.ts';
+import type { Conversation } from './types.ts';
 
 // ---------- helpers ----------
 
@@ -1039,4 +1043,151 @@ test('resolver el plan de un hábito custom respeta el label de customLevels (re
     'Ejercicios de articulaciones',
     'plan refleja el label editado (NO el ritual step)',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Hechos relevantes extraídos del texto del usuario.
+// Se usan como tags en el panel Insights y como contexto para el LLM.
+// ---------------------------------------------------------------------------
+
+/** Helper: crea una conversación de tests con un único mensaje de usuario. */
+function convWithUserMsg(
+  msg: string,
+  opts: { date?: string; mood?: Conversation['mood']; id?: string } = {},
+): Conversation {
+  const date = opts.date ?? '2025-06-15';
+  return {
+    id: opts.id ?? `c-${Math.random().toString(36).slice(2, 7)}`,
+    startedAt: `${date}T08:00:00Z`,
+    endedAt: `${date}T08:05:00Z`,
+    messageCount: 2,
+    firstUserMessage: msg.slice(0, 200),
+    mood: opts.mood,
+    facts: [],
+    messages: [
+      { role: 'assistant', content: 'Hola', ts: `${date}T08:00:00Z` },
+      { role: 'user', content: msg, ts: `${date}T08:01:00Z` },
+    ],
+  };
+}
+
+test('extractFactsFromConversation: detecta categorías obvias (familia, trabajo, salud)', () => {
+  const c = convWithUserMsg(
+    'Tengo dos hijos pequeños, trabajo por turnos de noche y me duele la espalda.',
+  );
+  const facts = extractFactsFromConversation(c);
+  const cats = facts.map((f) => f.category);
+  assert.ok(cats.includes('family'), 'detecta hijos');
+  assert.ok(cats.includes('work'), 'detecta trabajo por turnos');
+  assert.ok(cats.includes('health'), 'detecta dolor / lesión');
+  assert.equal(cats.length, new Set(cats).size, 'una emisión por categoría');
+});
+
+test('extractFactsFromConversation: detecta preferencias de horario', () => {
+  // Caso 1: mensaje sobre la tarde/noche → emite "Rinde mejor por la tarde/noche".
+  const c1 = convWithUserMsg('He notado que rindo mucho mejor por la noche.');
+  const f1 = extractFactsFromConversation(c1);
+  assert.ok(f1.some((f) => f.category === 'time_pref'), 'detecta preferencia horaria');
+  assert.ok(
+    f1.some((f) => f.category === 'time_pref' && f.text.toLowerCase().includes('noche')),
+    'el texto refleja el horario mencionado',
+  );
+
+  // Caso 2: el sistema prioriza la señal NEGATIVA específica cuando hay un
+  // sintagma "por la mañana + cuesta/muerto": "Por la mañana me cuesta" gana
+  // sobre "rindo mejor por la noche" porque ya emitió un time_pref.
+  const c2 = convWithUserMsg('Por la mañana me cuesta mucho, rindo mejor por la noche.');
+  const f2 = extractFactsFromConversation(c2);
+  const tf2 = f2.find((f) => f.category === 'time_pref');
+  assert.ok(tf2, 'detecta preferencia horaria');
+  assert.ok(tf2.text.toLowerCase().includes('mañana'), 'prioriza el hecho negativo específico de mañana');
+});
+
+test('extractFactsFromConversation: evita falsos positivos con palabras sueltas', () => {
+  // "trabajo" como verbo en "trabajo desde hace años en esto" no debería bastar;
+  // pero "teletrabajo" sí. Probamos con texto neutro SIN palabras clave.
+  const c = convWithUserMsg('Hoy ha sido un día normal, sin mucho que contar.');
+  const facts = extractFactsFromConversation(c);
+  assert.equal(facts.length, 0, 'sin keywords claras → 0 hechos');
+});
+
+test('extractFactsFromConversation: detecta obstáculo recurrente', () => {
+  const c = convWithUserMsg(
+    'Los fines de semana siempre me cuesta mucho mantener la rutina.',
+  );
+  const facts = extractFactsFromConversation(c);
+  const cats = facts.map((f) => f.category);
+  assert.ok(cats.includes('obstacle'), 'detecta obstáculo recurrente');
+});
+
+test('extractFactsFromConversation: vacío → 0 hechos (no rompe)', () => {
+  const c: Conversation = {
+    id: 'x',
+    startedAt: '2025-06-15T08:00:00Z',
+    endedAt: '2025-06-15T08:01:00Z',
+    messageCount: 0,
+    firstUserMessage: '',
+    facts: [],
+    messages: [],
+  };
+  assert.equal(extractFactsFromConversation(c).length, 0);
+});
+
+test('archiveConversation: ahora incluye facts[] extraídos', () => {
+  let s = emptyState();
+  s.chat = [
+    { role: 'user', content: 'Tengo un hijo, viajo mucho y rindo mejor por la noche.', ts: '2025-06-15T08:00:00Z' },
+  ];
+  const after = archiveConversation(s, '2025-06-15T08:02:00Z');
+  const c = after.conversations[0];
+  assert.ok(Array.isArray(c.facts), 'facts debe existir (array)');
+  assert.ok(c.facts.length >= 3, 'extrae al menos 3 hechos de la frase');
+  const cats = new Set(c.facts.map((f) => f.category));
+  assert.ok(cats.has('family'));
+  assert.ok(cats.has('travel'));
+  assert.ok(cats.has('time_pref'));
+});
+
+test('collectAllFacts: deduplica hechos repetidos en varias conversaciones', () => {
+  const a = convWithUserMsg('Tengo dos hijos', { date: '2025-06-10', id: 'a' });
+  const b = convWithUserMsg('Tengo dos hijos y estoy cansada', { date: '2025-06-15', id: 'b' });
+  // Extraemos facts primero (como haría archiveConversation).
+  a.facts = extractFactsFromConversation(a);
+  b.facts = extractFactsFromConversation(b);
+  const all = collectAllFacts([a, b]);
+  const familyFacts = all.filter((f) => f.category === 'family');
+  assert.equal(familyFacts.length, 1, 'deduplica: una sola emisión "tiene hijos"');
+  // La fuente más reciente es la que sobrevive.
+  assert.equal(familyFacts[0].sourceDate, '2025-06-15', 'sourceDate = conversación más reciente');
+});
+
+test('collectAllFacts: backwards-compat extrae facts de conversaciones antiguas sin facts[]', () => {
+  // Conversación antigua sin facts[] precargados.
+  const old: Conversation = {
+    id: 'old',
+    startedAt: '2025-06-01T08:00:00Z',
+    endedAt: '2025-06-01T08:05:00Z',
+    messageCount: 2,
+    firstUserMessage: 'Trabajo desde casa',
+    mood: 'neutral',
+    // facts omitido a propósito (simula estado pre-feature).
+    messages: [
+      { role: 'assistant', content: 'ok', ts: '2025-06-01T08:00:00Z' },
+      { role: 'user', content: 'Trabajo desde casa y tengo hijos', ts: '2025-06-01T08:01:00Z' },
+    ],
+  };
+  const all = collectAllFacts([old]);
+  const cats = new Set(all.map((f) => f.category));
+  assert.ok(cats.has('work'), 'migración: extrae work aunque facts[] no exista');
+  assert.ok(cats.has('family'), 'migración: extrae family aunque facts[] no exista');
+});
+
+test('summarizeFacts: vacío → string vacío; con hechos → bloque formateado', () => {
+  assert.equal(summarizeFacts([]), '');
+  const c = convWithUserMsg('Tengo un hijo, viajo por trabajo');
+  c.facts = extractFactsFromConversation(c);
+  const out = summarizeFacts([c]);
+  assert.ok(out.includes('Lo que el coach retiene'), 'cabecera visible para el LLM');
+  assert.ok(out.includes('Familia') || out.includes('Trabajo'), 'categorías presentes');
+  assert.match(out, /•/, 'formato con viñetas');
 });
