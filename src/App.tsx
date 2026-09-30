@@ -4,17 +4,17 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Home, 
-  BarChart2, 
-  Award, 
-  User, 
+import {
+  Home,
+  BarChart2,
+  Award,
+  User,
   Sparkles,
-  Plus, 
-  CheckCircle2, 
-  Circle, 
-  Flame, 
-  Gem, 
+  Plus,
+  CheckCircle2,
+  Circle,
+  Flame,
+  Gem,
   Trophy,
   Download,
   Upload,
@@ -23,13 +23,28 @@ import {
   TrendingUp,
   Clock,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CoachView from './CoachView.tsx';
 import GuideView from './GuideView.tsx';
 import { useDailyMotivation } from './services/motivations.ts';
 import { MotivationModal, MotivationSettings } from './components/Motivation.tsx';
+import {
+  NS,
+  loadPrimary,
+  savePrimary,
+  clearPrimary,
+  downloadBackup,
+  parseBackup,
+  markManualDownloaded,
+  dismissOnboarding,
+  dismissReminder,
+  daysSinceLastDownload,
+  shouldShowReminder,
+  getOnboardingDismissed,
+} from './services/persistence.ts';
 
 // --- Types ---
 interface Habit {
@@ -187,6 +202,10 @@ export default function App() {
       return true;
     }
   });
+  // Modal de onboarding de copia de seguridad: aparece la primera vez.
+  const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
+  // Banner-recordatorio "X días sin copia". Aparece cada 7 días.
+  const [showBackupReminder, setShowBackupReminder] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -201,10 +220,32 @@ export default function App() {
   // Mensaje diario de motivación (modal antes de entrar a la app).
   const motivation = useDailyMotivation();
 
-  // Save to localStorage on every change
+  // Save to localStorage + IndexedDB on every change.
+  // IDB va con debounce dentro de savePrimary; localStorage es síncrono.
   useEffect(() => {
-    localStorage.setItem('habitquest_data', JSON.stringify(userData));
+    savePrimary(NS.MANUAL, userData);
   }, [userData]);
+
+  // Recuperación: si localStorage está vacío al montar (caché borrada, PWA
+  // reinstalada, nuevo dispositivo), intentamos traer el último estado desde
+  // IndexedDB. Si tampoco hay, se queda con INITIAL_HABITS.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (localStorage.getItem(NS.MANUAL)) return; // ya había datos en LS
+        const recovered = await loadPrimary<UserData>(NS.MANUAL);
+        if (!recovered || cancelled) return;
+        // Solo adoptamos si parece válido (al menos un array de hábitos).
+        if (!Array.isArray((recovered as UserData).habits)) return;
+        setUserData(recovered as UserData);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Theme effect
   useEffect(() => {
@@ -219,6 +260,12 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     setUserData(prev => ({ ...prev, theme }));
   }, [theme]);
+
+  // Onboarding de copia de seguridad: solo la primera vez que se abre la app.
+  useEffect(() => {
+    if (!getOnboardingDismissed()) setShowBackupOnboarding(true);
+    if (shouldShowReminder()) setShowBackupReminder(true);
+  }, []);
 
   const getLevelTitle = (lvl: number) => {
     if (lvl <= 5) return 'Iniciado';
@@ -408,58 +455,91 @@ export default function App() {
   };
 
   const exportData = () => {
-    const blob = new Blob([JSON.stringify(userData)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `HabitQuest_${today}.json`;
-    a.click();
+    downloadBackup('manual', userData);
+    markManualDownloaded();
+    setShowBackupReminder(false);
   };
 
   const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target?.result as string);
-        setUserData(data);
-      } catch (err) {
-        alert('Archivo inválido');
+    void (async () => {
+      // Acepta tanto el sobre nuevo (app='HabitQuest') como archivos legacy
+      // (JSON crudo con la forma de UserData).
+      const envelope = await parseBackup(file);
+      if (envelope && envelope.type === 'manual') {
+        setUserData(envelope.data as UserData);
+        savePrimary(NS.MANUAL, envelope.data);
+        return;
       }
-    };
-    reader.readAsText(file);
+      // Fallback legacy: leer como texto y aceptar si parece UserData.
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const raw = ev.target?.result as string;
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.habits)) {
+            alert('Archivo inválido: no se reconoce el formato.');
+            return;
+          }
+          setUserData(parsed as UserData);
+          savePrimary(NS.MANUAL, parsed);
+        } catch {
+          alert('Archivo inválido');
+        }
+      };
+      reader.readAsText(file);
+    })();
+    // Limpia el input para permitir re-importar el mismo archivo.
+    e.target.value = '';
   };
 
   // --- Datos del Coach (v2, storage independiente) ---
   const exportCoach = () => {
-    const data = localStorage.getItem('habitquest_coach');
-    const blob = new Blob([data ?? '{}'], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `HabitQuest_Coach_${today}.json`;
-    a.click();
+    const raw = localStorage.getItem('habitquest_coach');
+    let payload: unknown = {};
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch { /* deja el objeto vacío */ }
+    }
+    downloadBackup('coach', payload);
   };
   const importCoach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target?.result as string);
-        if (typeof data !== 'object' || !data || !Array.isArray(data.behaviors)) throw new Error('formato');
+    void (async () => {
+      const envelope = await parseBackup(file);
+      if (envelope && envelope.type === 'coach') {
+        const data = envelope.data;
+        if (typeof data !== 'object' || !data || !Array.isArray((data as { behaviors?: unknown }).behaviors)) {
+          alert('Archivo de Coach inválido');
+          return;
+        }
         localStorage.setItem('habitquest_coach', JSON.stringify(data));
         alert('Datos del Coach importados. Recargando…');
         window.location.reload();
-      } catch {
-        alert('Archivo de Coach inválido');
+        return;
       }
-    };
-    reader.readAsText(file);
+      // Fallback legacy: JSON crudo con { behaviors, goals, ... }.
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          if (typeof data !== 'object' || !data || !Array.isArray(data.behaviors)) throw new Error('formato');
+          localStorage.setItem('habitquest_coach', JSON.stringify(data));
+          alert('Datos del Coach importados. Recargando…');
+          window.location.reload();
+        } catch {
+          alert('Archivo de Coach inválido');
+        }
+      };
+      reader.readAsText(file);
+    })();
+    e.target.value = '';
   };
   const resetCoach = () => {
     if (!confirm('¿Borrar TODOS los datos del Coach (objetivos, hábitos, historial y chat)? No afecta al modo manual de Inicio.')) return;
-    localStorage.removeItem('habitquest_coach');
-    localStorage.removeItem('habitquest_migrated');
+    clearPrimary(NS.COACH);
+    try { localStorage.removeItem('habitquest_migrated'); } catch { /* ignore */ }
     window.location.reload();
   };
 
@@ -954,17 +1034,52 @@ export default function App() {
         <h2 className="font-heading font-bold text-2xl">{userData.name}</h2>
         <p className="text-rpg-text-secondary">{getLevelTitle(level)} Nivel {level}</p>
       </div>
-      
+
       <div className="rpg-card p-5">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold">Tema</h3>
-          <button 
+          <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className="px-4 py-2 rounded-lg bg-white/10"
           >
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
         </div>
+      </div>
+
+      {/* Tarjeta de copia de seguridad — la ÚNICA capa que sobrevive a TODO */}
+      <div className="rpg-card p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <ShieldCheck size={22} className="text-cyan-400 mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold">Copia de seguridad</h3>
+            <p className="text-xs text-rpg-text-secondary mt-1">
+              Tus datos viven en este navegador. Descarga una copia cada cierto tiempo y guárdala en Drive o iCloud:
+              es la única forma de recuperarlos si se reinstala la app o se borra la caché.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={exportData}
+            className="flex-1 py-2.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-bold text-sm"
+          >
+            📥 Descargar copia
+          </button>
+          <label className="flex-1 py-2.5 rounded-lg bg-white/10 text-sm font-bold text-center cursor-pointer">
+            📤 Restaurar
+            <input type="file" className="hidden" onChange={importData} accept=".json" />
+          </label>
+        </div>
+        <p className="text-[10px] text-rpg-text-secondary">
+          Última descarga: {(() => {
+            const d = daysSinceLastDownload();
+            if (d < 0) return 'nunca';
+            if (d === 0) return 'hoy';
+            if (d === 1) return 'hace 1 día';
+            return `hace ${d} días`;
+          })()}
+        </p>
       </div>
 
       <div className="rpg-card p-1">
@@ -1102,6 +1217,89 @@ export default function App() {
       <AnimatePresence>
         {motivation.showModal && (
           <MotivationModal message={motivation.message} onClose={motivation.dismiss} />
+        )}
+      </AnimatePresence>
+
+      {/* Onboarding de copia de seguridad (solo la primera vez). */}
+      <AnimatePresence>
+        {showBackupOnboarding && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-6"
+            onClick={() => { dismissOnboarding(); setShowBackupOnboarding(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.92, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="rpg-card p-6 w-full max-w-sm"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck size={22} className="text-cyan-400" />
+                <h3 className="font-bold text-lg">Tus datos están seguros… a medias</h3>
+              </div>
+              <p className="text-sm text-rpg-text-secondary mt-3">
+                HabitQuest guarda tu progreso en este navegador. Si se borra la caché, se reinstala la app o cambias de dispositivo,
+                <b> puedes perderlo todo</b>.
+              </p>
+              <p className="text-sm text-rpg-text-secondary mt-2">
+                Desde <b>Héroe → Copia de seguridad</b> puedes descargar un archivo <code>.json</code> con tus hábitos, racha y gastos.
+                Guárdalo en Drive o iCloud y, si pasa algo, restáuralo con un toque.
+              </p>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => { exportData(); dismissOnboarding(); setShowBackupOnboarding(false); }}
+                  className="flex-1 py-2.5 rpg-gradient rounded-xl font-bold text-sm text-white"
+                >
+                  Descargar ahora
+                </button>
+                <button
+                  onClick={() => { dismissOnboarding(); setShowBackupOnboarding(false); }}
+                  className="px-4 py-2.5 rounded-xl bg-white/10 text-sm"
+                >
+                  Más tarde
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Banner-recordatorio: "X días sin copia". */}
+      <AnimatePresence>
+        {showBackupReminder && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-4 rpg-card p-3 flex items-center gap-3 border border-amber-500/30"
+          >
+            <span className="text-xl">⏰</span>
+            <div className="flex-1 text-xs">
+              {(() => {
+                const d = daysSinceLastDownload();
+                return d < 0
+                  ? <span>Aún no has descargado ninguna copia de seguridad.</span>
+                  : <span>Hace <b>{d} días</b> desde tu última copia.</span>;
+              })()}
+            </div>
+            <button
+              onClick={() => { exportData(); setShowBackupReminder(false); }}
+              className="px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 text-xs font-bold flex-shrink-0"
+            >
+              Descargar
+            </button>
+            <button
+              onClick={() => { dismissReminder(); setShowBackupReminder(false); }}
+              className="text-rpg-text-secondary text-xs flex-shrink-0"
+              aria-label="Cerrar recordatorio"
+            >
+              ✕
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 

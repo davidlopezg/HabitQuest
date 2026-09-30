@@ -65,6 +65,7 @@ import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/supabase.ts';
+import { NS, loadPrimary, savePrimary } from './services/persistence.ts';
 import type { BehaviorLevelDef } from './engine/index.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
@@ -77,8 +78,15 @@ const EXAMPLES = [
 ];
 
 function loadState(): CoachState {
+  return loadStateFromSource(localStorage.getItem(STORAGE_KEY));
+}
+
+/**
+ * Variante reutilizable: valida + migra un JSON ya parseado o su string crudo.
+ * Usado por la recuperación desde IndexedDB cuando localStorage quedó vacío.
+ */
+function loadStateFromSource(raw: string | null | undefined): CoachState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') throw new Error('bad shape');
@@ -271,10 +279,34 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
+    // Espejo a IndexedDB (debounced internamente) — sobrevive a evictions del navegador.
+    savePrimary(NS.COACH, cs);
     // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
     const t = setTimeout(() => { void pushRemoteState(cs); }, 500);
     return () => clearTimeout(t);
   }, [cs]);
+
+  // Recuperación desde IndexedDB si localStorage quedó vacío (caché borrada,
+  // PWA reinstalada). Si tampoco hay IDB, el loadState() síncrono ya devolvió
+  // emptyState(), así que no perdemos más que lo inevitable.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (localStorage.getItem(STORAGE_KEY)) return;
+        const recovered = await loadPrimary<unknown>(NS.COACH);
+        if (!recovered || cancelled) return;
+        const parsed = recovered as { goals?: unknown[] };
+        if (!Array.isArray(parsed.goals)) return;
+        // Reusamos el validador+migrador: trata el JSON como si viniera de LS.
+        setCs(loadStateFromSource(JSON.stringify(recovered)));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pull inicial desde Supabase: si el remoto tiene objetivos y el local está
   // vacío (porque se borró localStorage, se reinstaló la PWA o es otro dispositivo),
