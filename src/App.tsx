@@ -42,7 +42,9 @@ import {
   dismissOnboarding,
   dismissReminder,
   daysSinceLastDownload,
+  downloadFullBackup,
   shouldShowReminder,
+  idbGet,
   getOnboardingDismissed,
 } from './services/persistence.ts';
 
@@ -55,6 +57,9 @@ interface Habit {
   streak: number;
   completedDates: string[]; // YYYY-MM-DD
   group?: string;
+  /** Área de vida (opcional). Permite agrupar hábitos por dominio funcional
+   *  (deporte, alimentación...) aparte del momento del día en `group`. */
+  category?: HabitCategory;
 }
 
 interface Achievement {
@@ -98,6 +103,35 @@ const HABIT_GROUPS = [
   { id: 'afternoon', name: 'TARDE', icon: '🌇', color: 'text-blue-400' },
   { id: 'night', name: 'NOCHE', icon: '🌙', color: 'text-purple-400' },
 ];
+
+// Categoría funcional del hábito. Distinta del `group` (momento del día):
+// un mismo hábito puede ser 'morning' y 'movement'. Permite agrupar/filtrar
+// por dominio ("cómo voy en deporte esta semana").
+export type HabitCategory =
+  | 'movement'   // deporte / caminar / ejercicio
+  | 'nutrition'  // alimentación, hidratación
+  | 'mind'       // meditación, journaling, respiración
+  | 'sleep'      // hábitos nocturnos / dormir
+  | 'learning'   // leer, estudiar
+  | 'work'       // bloques de trabajo / productividad
+  | 'other';     // sin clasificar
+
+const HABIT_CATEGORIES: { id: HabitCategory; name: string; icon: string; color: string }[] = [
+  { id: 'movement',  name: 'Deporte',    icon: '🏃', color: 'text-green-400' },
+  { id: 'nutrition', name: 'Alimentación', icon: '🥗', color: 'text-emerald-400' },
+  { id: 'mind',      name: 'Mente',      icon: '🧘', color: 'text-violet-400' },
+  { id: 'sleep',     name: 'Descanso',   icon: '😴', color: 'text-indigo-400' },
+  { id: 'learning',  name: 'Aprendizaje', icon: '📚', color: 'text-amber-400' },
+  { id: 'work',      name: 'Trabajo',    icon: '💼', color: 'text-cyan-400' },
+  { id: 'other',     name: 'Otro',       icon: '✨', color: 'text-rpg-text-secondary' },
+];
+
+const CATEGORY_DEFAULT: HabitCategory = 'other';
+const CATEGORY_META: Record<HabitCategory, { name: string; icon: string; color: string }> =
+  HABIT_CATEGORIES.reduce(
+    (acc, c) => { acc[c.id] = c; return acc; },
+    {} as Record<HabitCategory, { name: string; icon: string; color: string }>,
+  );
 
 const INITIAL_HABITS: Habit[] = [
   { id: '1', name: 'Respiración + afirmaciones', icon: '🌬️', xp: 10, streak: 0, completedDates: [], group: 'morning' },
@@ -153,36 +187,65 @@ const COMBO_WINDOW = 30000; // 30 seconds
 const COMBO_MIN = 3;
 const COMBO_BONUS = 0.5;
 
+/** Estado inicial del modo manual: LS > INITIAL_HABITS.
+ *  Importante: NO escribir a LS/IDB hasta haber intentado IDB (si no,
+ *  el primer save borraría los datos que solo viven en IDB). */
+function loadInitialUserData(): UserData {
+  try {
+    const saved = localStorage.getItem(NS.MANUAL);
+    if (saved) {
+      const parsed = JSON.parse(saved) as UserData;
+      if (Array.isArray(parsed?.habits)) return parsed;
+    }
+  } catch {
+    /* fallthrough */
+  }
+  return {
+    name: 'Aventurero',
+    avatar: '🦸',
+    xp: 0,
+    gems: 0,
+    globalStreak: 0,
+    lastActiveDate: new Date().toISOString().split('T')[0],
+    habits: INITIAL_HABITS,
+    unlockedAchievements: [],
+    streakFreeze: 0,
+    groupStreaks: { morning: 0, midday: 0, afternoon: 0, night: 0 },
+    lastGroupActivity: {},
+    dailyChallenges: [],
+  };
+}
+
 export default function App() {
   // --- State ---
-  const [userData, setUserData] = useState<UserData>(() => {
-    const saved = localStorage.getItem('habitquest_data');
-    if (saved) return JSON.parse(saved);
-    return {
-      name: 'Aventurero',
-      avatar: '🦸',
-      xp: 0,
-      gems: 0,
-      globalStreak: 0,
-      lastActiveDate: new Date().toISOString().split('T')[0],
-      habits: INITIAL_HABITS,
-      unlockedAchievements: [],
-      streakFreeze: 0,
-      groupStreaks: { morning: 0, midday: 0, afternoon: 0, night: 0 },
-      lastGroupActivity: {},
-      dailyChallenges: []
-    };
+  // Hidratación síncrona desde LS. Si LS tiene datos válidos, los usamos ya
+  // y marcamos hydrated=true inmediatamente (sin splash). Solo vamos a IDB
+  // cuando LS parece el INITIAL_HABITS por defecto (probable residuo o LS evict).
+  const [hydrated, setHydrated] = useState<boolean>(() => {
+    try {
+      const lsRaw = localStorage.getItem(NS.MANUAL);
+      const lsData = lsRaw ? (JSON.parse(lsRaw) as UserData) : null;
+      const lsCount = Array.isArray(lsData?.habits) ? lsData!.habits.length : 0;
+      const lsHasProgress = lsData?.habits?.some((h) => h.completedDates?.length > 0) ?? false;
+      // Si LS ya tiene datos propios, hidratamos al toque (sin ir a IDB).
+      if (lsCount > INITIAL_HABITS.length || lsHasProgress) return true;
+    } catch {
+      /* fallthrough */
+    }
+    return false; // necesitamos consultar IDB antes de declarar hydration
   });
+  const [userData, setUserData] = useState<UserData>(loadInitialUserData);
 
   const [activeTab, setActiveTab] = useState<'coach' | 'home' | 'stats' | 'quests' | 'hero'>('home');
   const [showCelebration, setShowCelebration] = useState<{ xp: number, gems: number } | null>(null);
   const [isLevelUp, setIsLevelUp] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showAddHabit, setShowAddHabit] = useState(false);
-  const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25, group: 'morning' });
+  const [newHabit, setNewHabit] = useState({ name: '', icon: '✨', xp: 25, group: 'morning', category: CATEGORY_DEFAULT as HabitCategory });
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitManager, setShowHabitManager] = useState(false);
   const [sortMode, setSortMode] = useState<'custom' | 'name' | 'xp' | 'streak'>('custom');
+  const [categoryFilter, setCategoryFilter] = useState<HabitCategory | 'all'>('all');
   const [focusMode, setFocusMode] = useState(false);
   const [quickComplete, setQuickComplete] = useState(false);
   const [longPressHabit, setLongPressHabit] = useState<string | null>(null);
@@ -220,32 +283,39 @@ export default function App() {
   // Mensaje diario de motivación (modal antes de entrar a la app).
   const motivation = useDailyMotivation();
 
-  // Save to localStorage + IndexedDB on every change.
-  // IDB va con debounce dentro de savePrimary; localStorage es síncrono.
+  // Hidratación async: solo si el inicializador vio LS=default. En ese caso
+  // vamos a IDB para ver si tiene algo mejor antes de declarar hydration.
+  // Si el inicializador ya marcó hydrated=true, este effect no hace nada.
   useEffect(() => {
-    savePrimary(NS.MANUAL, userData);
-  }, [userData]);
-
-  // Recuperación: si localStorage está vacío al montar (caché borrada, PWA
-  // reinstalada, nuevo dispositivo), intentamos traer el último estado desde
-  // IndexedDB. Si tampoco hay, se queda con INITIAL_HABITS.
-  useEffect(() => {
+    if (hydrated) return;
     let cancelled = false;
     void (async () => {
       try {
-        if (localStorage.getItem(NS.MANUAL)) return; // ya había datos en LS
-        const recovered = await loadPrimary<UserData>(NS.MANUAL);
-        if (!recovered || cancelled) return;
-        // Solo adoptamos si parece válido (al menos un array de hábitos).
-        if (!Array.isArray((recovered as UserData).habits)) return;
-        setUserData(recovered as UserData);
+        const lsRaw = (() => { try { return localStorage.getItem(NS.MANUAL); } catch { return null; } })();
+        const lsData = lsRaw ? (JSON.parse(lsRaw) as UserData) : null;
+        const lsCount = Array.isArray(lsData?.habits) ? lsData!.habits.length : 0;
+        const idbValue = await idbGet<UserData>(NS.MANUAL);
+        if (cancelled) return;
+        if (idbValue && Array.isArray(idbValue.habits) && idbValue.habits.length > lsCount) {
+          setUserData(idbValue);
+          try { localStorage.setItem(NS.MANUAL, JSON.stringify(idbValue)); } catch { /* ignore */ }
+        }
       } catch {
         /* ignore */
+      } finally {
+        if (!cancelled) setHydrated(true);
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save to localStorage + IndexedDB on every change.
+  // Solo después de hidratar, para no machacar IDB con INITIAL_HABITS.
+  useEffect(() => {
+    if (!hydrated) return;
+    savePrimary(NS.MANUAL, userData);
+  }, [userData, hydrated]);
 
   // Theme effect
   useEffect(() => {
@@ -424,10 +494,10 @@ export default function App() {
 
   const [lastComboTime, setLastComboTime] = useState(0);
 
-  const addHabit = (name: string, icon: string, xp: number, group: string) => {
+  const addHabit = (name: string, icon: string, xp: number, group: string, category: HabitCategory) => {
     setUserData(prev => ({
       ...prev,
-      habits: [...prev.habits, { id: Date.now().toString(), name, icon, xp, streak: 0, completedDates: [], group }]
+      habits: [...prev.habits, { id: Date.now().toString(), name, icon, xp, streak: 0, completedDates: [], group, category }]
     }));
   };
 
@@ -464,12 +534,27 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     void (async () => {
-      // Acepta tanto el sobre nuevo (app='HabitQuest') como archivos legacy
-      // (JSON crudo con la forma de UserData).
+      // Acepta sobre nuevo (manual/full/coach) y archivos legacy.
       const envelope = await parseBackup(file);
       if (envelope && envelope.type === 'manual') {
         setUserData(envelope.data as UserData);
         savePrimary(NS.MANUAL, envelope.data);
+        return;
+      }
+      if (envelope && envelope.type === 'full') {
+        const data = envelope.data as { manual?: unknown; coach?: unknown };
+        if (data.manual && typeof data.manual === 'object' && Array.isArray((data.manual as UserData).habits)) {
+          setUserData(data.manual as UserData);
+          savePrimary(NS.MANUAL, data.manual);
+        }
+        if (data.coach && typeof data.coach === 'object') {
+          try { localStorage.setItem('habitquest_coach', JSON.stringify(data.coach)); } catch { /* ignore */ }
+          savePrimary(NS.COACH, data.coach);
+        }
+        // Restaurar desde copia cuenta como copia realizada: reseteamos el recordatorio.
+        markManualDownloaded();
+        alert('Copia completa restaurada. Recargando…');
+        window.location.reload();
         return;
       }
       // Fallback legacy: leer como texto y aceptar si parece UserData.
@@ -492,6 +577,13 @@ export default function App() {
     })();
     // Limpia el input para permitir re-importar el mismo archivo.
     e.target.value = '';
+  };
+
+  /** Backup completo: incluye manual + coach (objetivos/hábitos del Coach). */
+  const exportFull = () => {
+    downloadFullBackup();
+    markManualDownloaded();
+    setShowBackupReminder(false);
   };
 
   // --- Datos del Coach (v2, storage independiente) ---
@@ -517,6 +609,18 @@ export default function App() {
         localStorage.setItem('habitquest_coach', JSON.stringify(data));
         alert('Datos del Coach importados. Recargando…');
         window.location.reload();
+        return;
+      }
+      if (envelope && envelope.type === 'full') {
+        const data = envelope.data as { coach?: unknown };
+        if (data.coach && typeof data.coach === 'object' && Array.isArray((data.coach as { behaviors?: unknown }).behaviors)) {
+          try { localStorage.setItem('habitquest_coach', JSON.stringify(data.coach)); } catch { /* ignore */ }
+          markManualDownloaded();
+          alert('Copia completa (Coach) importada. Recargando…');
+          window.location.reload();
+          return;
+        }
+        alert('Este archivo no contiene datos del Coach.');
         return;
       }
       // Fallback legacy: JSON crudo con { behaviors, goals, ... }.
@@ -588,6 +692,9 @@ export default function App() {
 
   const getSortedHabits = () => {
     let habits = [...userData.habits];
+    if (categoryFilter !== 'all') {
+      habits = habits.filter((h) => (h.category ?? CATEGORY_DEFAULT) === categoryFilter);
+    }
     switch (sortMode) {
       case 'name': return habits.sort((a, b) => a.name.localeCompare(b.name));
       case 'xp': return habits.sort((a, b) => b.xp - a.xp);
@@ -1061,16 +1168,19 @@ export default function App() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <button
-            onClick={exportData}
+            onClick={exportFull}
             className="flex-1 py-2.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-bold text-sm"
           >
-            📥 Descargar copia
+            📥 Descargar copia completa
           </button>
           <label className="flex-1 py-2.5 rounded-lg bg-white/10 text-sm font-bold text-center cursor-pointer">
             📤 Restaurar
             <input type="file" className="hidden" onChange={importData} accept=".json" />
           </label>
         </div>
+        <p className="text-[10px] text-rpg-text-secondary">
+          Incluye: hábitos, progreso, <strong>objetivos del Coach</strong>, historial y configuración.
+        </p>
         <p className="text-[10px] text-rpg-text-secondary">
           Última descarga: {(() => {
             const d = daysSinceLastDownload();
@@ -1168,11 +1278,22 @@ export default function App() {
         exit={{ scale: 0.9 }}
         className="bg-rpg-card rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
       >
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+        <div className="p-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold text-lg">Gestionar Hábitos</h3>
-          <div className="flex gap-2">
-            <select 
-              value={sortMode} 
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as any)}
+              className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+              title="Filtrar por categoría"
+            >
+              <option value="all">Todas las categorías</option>
+              {HABIT_CATEGORIES.map(c => (
+                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+              ))}
+            </select>
+            <select
+              value={sortMode}
               onChange={(e) => setSortMode(e.target.value as any)}
               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
             >
@@ -1185,21 +1306,34 @@ export default function App() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {getSortedHabits().map(habit => (
-            <div key={habit.id} className="flex items-center gap-2 p-3 bg-black/20 rounded-xl">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-xl">{habit.icon}</span>
-                <div>
-                  <div className="text-sm font-medium">{habit.name}</div>
-                  <div className="text-[10px] text-rpg-text-secondary">{HABIT_GROUPS.find(g => g.id === habit.group)?.name} • +{habit.xp} XP</div>
+          {getSortedHabits().map(habit => {
+            const catMeta = CATEGORY_META[habit.category ?? CATEGORY_DEFAULT];
+            return (
+              <div key={habit.id} className="flex items-center gap-2 p-3 bg-black/20 rounded-xl">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xl">{habit.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{habit.name}</div>
+                    <div className="text-[10px] text-rpg-text-secondary flex items-center gap-2">
+                      <span>{HABIT_GROUPS.find(g => g.id === habit.group)?.name} • +{habit.xp} XP</span>
+                      <span className={`inline-flex items-center gap-1 ${catMeta.color}`}>
+                        {catMeta.icon} {catMeta.name}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+                <button onClick={() => moveHabit(habit.id, 'up')} className="p-2 hover:bg-white/10 rounded-lg"><ChevronUp size={18} /></button>
+                <button onClick={() => moveHabit(habit.id, 'down')} className="p-2 hover:bg-white/10 rounded-lg"><ChevronDown size={18} /></button>
+                <button onClick={() => { setEditingHabit(habit); setShowHabitManager(false); }} className="p-2 hover:bg-white/10 rounded-lg">✏️</button>
+                <button onClick={() => { if(confirm('¿Eliminar?')) deleteHabit(habit.id); }} className="p-2 hover:bg-red-500/20 rounded-lg text-red-400">🗑️</button>
               </div>
-              <button onClick={() => moveHabit(habit.id, 'up')} className="p-2 hover:bg-white/10 rounded-lg"><ChevronUp size={18} /></button>
-              <button onClick={() => moveHabit(habit.id, 'down')} className="p-2 hover:bg-white/10 rounded-lg"><ChevronDown size={18} /></button>
-              <button onClick={() => { setEditingHabit(habit); setShowHabitManager(false); }} className="p-2 hover:bg-white/10 rounded-lg">✏️</button>
-              <button onClick={() => { if(confirm('¿Eliminar?')) deleteHabit(habit.id); }} className="p-2 hover:bg-red-500/20 rounded-lg text-red-400">🗑️</button>
-            </div>
-          ))}
+            );
+          })}
+          {getSortedHabits().length === 0 && (
+            <p className="text-center text-rpg-text-secondary text-sm py-6">
+              No hay hábitos en esta categoría.
+            </p>
+          )}
         </div>
         <div className="p-4 border-t border-white/10">
           <button onClick={() => { setShowAddHabit(true); setShowHabitManager(false); }} className="w-full py-3 bg-cyan-500/20 text-cyan-400 rounded-xl font-bold">
@@ -1382,23 +1516,50 @@ export default function App() {
                 <label className="text-xs text-rpg-text-secondary mb-2 block">Grupo</label>
                 <div className="grid grid-cols-2 gap-2">
                   {HABIT_GROUPS.map(g => (
-                    <button 
-                      key={g.id} 
-                      onClick={() => editingHabit ? setEditingHabit({ ...editingHabit, group: g.id }) : setNewHabit({ ...newHabit, group: g.id })} 
+                    <button
+                      key={g.id}
+                      onClick={() => editingHabit ? setEditingHabit({ ...editingHabit, group: g.id }) : setNewHabit({ ...newHabit, group: g.id })}
                       className={`py-2 px-3 rounded-lg text-xs flex items-center gap-1 ${(editingHabit?.group || newHabit.group) === g.id ? 'bg-cyan-500/30 ring-2 ring-cyan-500' : 'bg-black/40'}`}
                     >{g.icon} {g.name}</button>
                   ))}
                 </div>
               </div>
+              <div>
+                <label className="text-xs text-rpg-text-secondary mb-2 block">Categoría</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {HABIT_CATEGORIES.map(c => {
+                    const active = (editingHabit?.category ?? newHabit.category) === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => editingHabit
+                          ? setEditingHabit({ ...editingHabit, category: c.id })
+                          : setNewHabit({ ...newHabit, category: c.id })}
+                        title={c.name}
+                        className={`py-2 px-2 rounded-lg text-base flex items-center justify-center ${active ? 'bg-cyan-500/30 ring-2 ring-cyan-500' : 'bg-black/40'}`}
+                      >{c.icon}</button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-rpg-text-secondary mt-1">
+                  Para distinguir Deporte, Alimentación, etc. (distinto del momento del día)
+                </p>
+              </div>
             </div>
             <button 
               onClick={() => {
                 if (editingHabit && editingHabit.name.trim()) {
-                  editHabit(editingHabit.id, { name: editingHabit.name, icon: editingHabit.icon, xp: editingHabit.xp, group: editingHabit.group });
+                  editHabit(editingHabit.id, {
+                    name: editingHabit.name,
+                    icon: editingHabit.icon,
+                    xp: editingHabit.xp,
+                    group: editingHabit.group,
+                    category: editingHabit.category ?? CATEGORY_DEFAULT,
+                  });
                   setEditingHabit(null);
                 } else if (newHabit.name.trim()) {
-                  addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp, newHabit.group);
-                  setNewHabit({ name: '', icon: '✨', xp: 25, group: 'morning' });
+                  addHabit(newHabit.name.trim(), newHabit.icon, newHabit.xp, newHabit.group, newHabit.category);
+                  setNewHabit({ name: '', icon: '✨', xp: 25, group: 'morning', category: CATEGORY_DEFAULT });
                   setShowAddHabit(false);
                 }
               }} 

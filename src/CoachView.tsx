@@ -65,7 +65,7 @@ import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/supabase.ts';
-import { NS, loadPrimary, savePrimary } from './services/persistence.ts';
+import { NS, savePrimary, idbGet } from './services/persistence.ts';
 import type { BehaviorLevelDef } from './engine/index.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
@@ -277,41 +277,58 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today]);
 
+  // Hidratación: si LS ya tiene goals, marcamos hydrated al toque. Solo vamos
+  // a IDB si LS parece vacío (goals=[]). Esto evita el flash de emptyState
+  // y cualquier clic perdido durante la ventana async.
+  const [hydrated, setHydrated] = useState<boolean>(() => {
+    try {
+      const lsRaw = localStorage.getItem(STORAGE_KEY);
+      const lsGoals = lsRaw ? (() => { try { return (JSON.parse(lsRaw) as { goals?: unknown[] }).goals; } catch { return null; } })() : null;
+      if (Array.isArray(lsGoals) && lsGoals.length > 0) return true;
+    } catch {
+      /* fallthrough */
+    }
+    return false;
+  });
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
-    // Espejo a IndexedDB (debounced internamente) — sobrevive a evictions del navegador.
-    savePrimary(NS.COACH, cs);
-    // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
-    const t = setTimeout(() => { void pushRemoteState(cs); }, 500);
-    return () => clearTimeout(t);
-  }, [cs]);
-
-  // Recuperación desde IndexedDB si localStorage quedó vacío (caché borrada,
-  // PWA reinstalada). Si tampoco hay IDB, el loadState() síncrono ya devolvió
-  // emptyState(), así que no perdemos más que lo inevitable.
-  useEffect(() => {
+    if (hydrated) return;
     let cancelled = false;
     void (async () => {
       try {
-        if (localStorage.getItem(STORAGE_KEY)) return;
-        const recovered = await loadPrimary<unknown>(NS.COACH);
-        if (!recovered || cancelled) return;
-        const parsed = recovered as { goals?: unknown[] };
-        if (!Array.isArray(parsed.goals)) return;
-        // Reusamos el validador+migrador: trata el JSON como si viniera de LS.
-        setCs(loadStateFromSource(JSON.stringify(recovered)));
+        const idbValue = await idbGet<unknown>(NS.COACH);
+        if (cancelled) return;
+        if (idbValue && typeof idbValue === 'object' && Array.isArray((idbValue as { goals?: unknown[] }).goals)) {
+          setCs(loadStateFromSource(JSON.stringify(idbValue)));
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(idbValue)); } catch { /* ignore */ }
+        }
       } catch {
         /* ignore */
+      } finally {
+        if (!cancelled) setHydrated(true);
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    // Solo guardamos después de hidratar, para no machacar IDB con emptyState.
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
+    // Espejo a IndexedDB (debounced internamente) — sobrevive a evictions del navegador.
+    savePrimary(NS.COACH, cs);
+    // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
+    const t = setTimeout(() => { void pushRemoteState(cs); }, 500);
+    return () => clearTimeout(t);
+  }, [cs, hydrated]);
+
   // Pull inicial desde Supabase: si el remoto tiene objetivos y el local está
   // vacío (porque se borró localStorage, se reinstaló la PWA o es otro dispositivo),
   // adoptamos el remoto. Si el local tiene objetivos y el remoto no, empujamos el local.
   useEffect(() => {
+    // Espera a la hidratación local antes de comparar con el remoto;
+    // si no, podríamos machacar LS con un remoto más viejo.
+    if (!hydrated) return;
     let cancelled = false;
     void (async () => {
       const remote = await fetchRemoteState();
@@ -332,7 +349,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!notice) return;

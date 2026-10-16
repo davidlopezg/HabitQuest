@@ -27,6 +27,7 @@ function exportHabitBackup() {
     counters: parsed.counters ?? {},
     memory: parsed.memory ?? {},
     chat: parsed.chat ?? [],
+    conversations: parsed.conversations ?? [],
   };
   const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

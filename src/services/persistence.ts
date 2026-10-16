@@ -14,6 +14,8 @@
 
 import { idbGet, idbSet, idbDel } from './idb.ts';
 
+export { idbGet };
+
 // --- Namespaces ----------------------------------------------------------------
 // Cada namespace tiene su propio par de claves LS + IDB. Así el modo manual y el
 // Coach no se pisan y se pueden restaurar de forma independiente.
@@ -123,15 +125,15 @@ export function clearPrimary(namespace: string): void {
 // --- Backup a archivo -------------------------------------------------------
 
 export interface BackupEnvelope {
-  /** Tipo de payload: 'manual' | 'coach' */
-  type: 'manual' | 'coach';
+  /** Tipo de payload: 'manual' | 'coach' | 'full' */
+  type: 'manual' | 'coach' | 'full';
   /** Versión del formato para futuras migraciones. */
   format: 1;
   /** ISO datetime de la exportación. */
   exportedAt: string;
   /** La app que lo generó. */
   app: 'HabitQuest';
-  /** El payload tal cual estaba guardado. */
+  /** El payload tal cual estaba guardado. Para type='full' contiene {manual, coach}. */
   data: unknown;
 }
 
@@ -167,7 +169,7 @@ export function parseBackup(file: File): Promise<BackupEnvelope | null> {
         if (!parsed || typeof parsed !== 'object') return resolve(null);
         if (parsed.app !== 'HabitQuest') return resolve(null);
         if (parsed.format !== 1) return resolve(null);
-        if (parsed.type !== 'manual' && parsed.type !== 'coach') return resolve(null);
+        if (parsed.type !== 'manual' && parsed.type !== 'coach' && parsed.type !== 'full') return resolve(null);
         if (!('data' in parsed)) return resolve(null);
         resolve(parsed as BackupEnvelope);
       } catch {
@@ -177,6 +179,40 @@ export function parseBackup(file: File): Promise<BackupEnvelope | null> {
     reader.onerror = () => resolve(null);
     reader.readAsText(file);
   });
+}
+
+/** Lee el valor actual de un namespace desde LS (no IDB). Devuelve null si no hay. */
+export function readSnapshot(namespace: string): unknown {
+  try {
+    const raw = localStorage.getItem(namespace);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Construye y descarga un sobre 'full' con manual + coach en un solo archivo.
+ *  Es la copia que cubre los objetivos/hábitos del Coach. */
+export function downloadFullBackup(): void {
+  const manual = readSnapshot(NS.MANUAL) ?? null;
+  const coach = readSnapshot(NS.COACH) ?? null;
+  const envelope: BackupEnvelope = {
+    type: 'full',
+    format: 1,
+    exportedAt: new Date().toISOString(),
+    app: 'HabitQuest',
+    data: { manual, coach },
+  };
+  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `habitquest-full-${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // --- Metadata / recordatorios ----------------------------------------------
