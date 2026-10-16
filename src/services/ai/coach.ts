@@ -287,31 +287,34 @@ REGLAS OBLIGATORIAS:
   "rationale": "<1-2 frases explicando por qué esta progresión>",
   "phases": [
     {
-      "label": "Fase 1 — <título corto>",
+      "label": "Fase N — <ACCIÓN CONCRETA ejecutable>",
       "startDay": 1,
       "minutes": 5,
       "behaviors": ["<nombre exacto de un behavior existente>"]
-    },
-    {
-      "label": "Fase 2 — <título corto>",
-      "startDay": 8,
-      "minutes": 15,
-      "behaviors": ["<nombre exacto>"]
     }
   ]
 }
 
+EL "label" DEBE SER UNA ACCIÓN CONCRETA Y EJECUTABLE, NO UNA CATEGORÍA ABSTRACTA:
+- MAL: "Inicio suave", "Base mínima", "Construcción", "Consolidación", "Expansión", "Maduración".
+- BIEN: "Caminar 1 min por el pasillo", "Levantarse y estirar 3 min", "Salir a caminar 5 min fuera", "Caminar 10 min al parque".
+Formato: "Fase N — <verbo en infinitivo + objeto + duración>". Ejemplos:
+  - "Fase 1 — Caminar 1 min dentro de casa"
+  - "Fase 2 — Caminar 3 min por la calle"
+  - "Fase 3 — Caminar 5 min al aire libre"
+  - "Fase 4 — Caminar 10 min con ropa deportiva"
+El usuario debe poder LEER el label y saber QUÉ HACER sin abrir más detalles.
+
+OTRAS REGLAS:
 - 2 a 5 fases, en orden cronológico (startDay ascendente).
 - Fase 1 empieza en startDay=1, las siguientes más tarde.
 - Cada fase aplica a UNO O VARIOS behaviors ya activos del objetivo (escribe el
   nombre EXACTO tal como aparece en la lista). Si "behaviors" está vacío [],
   la fase aplica a TODOS los behaviors del objetivo.
-- "minutes" es el OBJETIVO de la fase: empieza trivial (2-10 min) y sube
+- "minutes" es el OBJETIVO de la fase: empieza trivial (1-5 min) y sube
   progresivamente. Usa números enteros.
-- Progresión ESCALABLE y EFECTIVA: la fase 1 debe ser trivial (2-5 min),
-  las siguientes suben volumen o añaden dificultad.
-- Considera el DETALLE del usuario (lesiones, horarios, restricciones).
-- Considera los LOGS y ADHERENCIA previos si existen.
+- Considera el DETALLE del usuario (lesiones, horarios, restricciones) tanto en
+  el "label" como en "minutes" — si tiene la rodilla mala, no digas "correr".
 - NO inventes behaviors nuevos; la propuesta SOLO redefine los existentes.
 `;
 
