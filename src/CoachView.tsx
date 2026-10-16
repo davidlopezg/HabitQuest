@@ -2041,39 +2041,51 @@ function GoalDetailOverlay({
     }
   }
 
-  /** Aplica la propuesta al draft de behaviors. Las fases se numeran a partir de
-   *  hoy y los behaviors se reemplazan en orden. */
+  /** Aplica la propuesta al draft de behaviors: reescribe las fases
+   *  (`customLevels`) de los behaviors ya activos del objetivo según lo
+   *  que devolvió la IA. Si una fase lista `behaviors: ['X','Y']`, esos son
+   *  los únicos behaviors a los que aplica; si lista vacío, aplica a todos. */
   function applyProposal(p: Extract<GoalProposal, { ok: true }>) {
-    const newBehaviors: Behavior[] = [];
-    p.phases.forEach((phase, phaseIdx) => {
-      phase.behaviors.forEach((pb, bIdx) => {
-        const id = `${goal.id}__ai_${phaseIdx}_${bIdx}_${Date.now()}`;
-        newBehaviors.push({
-          id,
-          goalId: goal.id,
-          templateId: 'custom',
-          name: pb.name,
-          icon: pb.icon,
-          category: pb.category === 'work' ? 'productivity' : (pb.category === 'mind' ? 'mindfulness' : pb.category),
-          enabled: true,
-          order: newBehaviors.length,
-          introducedAt: todayKey(),
-          kind: 'volume',
-          startRitual: pb.startRitual,
-          currentLevel: 1,
-          preferredSlots: [pb.slot],
-          customLevels: [
-            { level: 1, minutes: 5, minimal: 1, need: 5, window: 7 },
-            { level: 2, minutes: 10, minimal: 2, need: 5, window: 7 },
-            { level: 3, minutes: 20, minimal: 5, need: 5, window: 7 },
-          ],
-          schedule: undefined,
-        });
-      });
+    if (draft.length === 0) {
+      onNotice?.('No hay hábitos activos en este objetivo para aplicar fases.');
+      setAiProposal(null);
+      return;
+    }
+    // Construye el array de fases en formato customLevels para cada behavior.
+    // Reglas:
+    //  - fase.behaviors vacío → aplica a TODOS los behaviors activos.
+    //  - fase.behaviors tiene nombres → match por nombre (case-insensitive,
+    //    trim). Si el LLM nombra un behavior que no existe, lo ignoramos
+    //    silenciosamente (no creamos nuevos).
+    const targetsByPhase: string[][] = p.phases.map((phase) => {
+      if (phase.behaviors.length === 0) return draft.map((b) => b.id);
+      const wanted = phase.behaviors.map((s) => s.toLowerCase());
+      return draft
+        .filter((b) => wanted.includes(b.name.toLowerCase()))
+        .map((b) => b.id);
     });
-    setDraft(newBehaviors);
+    const targetIds = new Set(targetsByPhase.flat());
+    const newDraft = draft.map((b) => {
+      if (!targetIds.has(b.id)) return b;
+      const lvls = p.phases.map((phase, idx) => {
+        const applies = targetsByPhase[idx].includes(b.id);
+        if (!applies) return null;
+        return {
+          level: idx + 1,
+          minutes: phase.minutes,
+          minimal: phase.minimal ?? Math.max(1, Math.ceil(phase.minutes / 2)),
+          need: 5,
+          window: 7,
+          label: phase.label,
+        };
+      }).filter((l): l is NonNullable<typeof l> => l !== null);
+      if (lvls.length === 0) return b;
+      return { ...b, customLevels: lvls };
+    });
+    setDraft(newDraft);
+    const touched = targetIds.size;
     setAiProposal(null);
-    onNotice?.(`Propuesta aplicada: ${p.phases.length} fase(s), ${newBehaviors.length} hábito(s). Pulsa "Guardar cambios" abajo.`);
+    onNotice?.(`Propuesta aplicada a ${touched} hábito(s) del objetivo: ${p.phases.length} fase(s). Pulsa "Guardar cambios" abajo.`);
   }
 
   function discardProposal() {
@@ -2608,37 +2620,34 @@ function GoalDetailOverlay({
                       <p className="text-xs text-rpg-text-secondary italic">{aiProposal.rationale}</p>
                     )}
                     {aiProposal.phases.map((phase, idx) => (
-                      <div key={idx} className="rpg-card p-3 space-y-2">
+                      <div key={idx} className="rpg-card p-3 space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <h4 className="font-heading font-bold text-sm">{phase.label}</h4>
-                          <span className="text-[10px] text-rpg-text-secondary">día {phase.startDay}</span>
+                          <span className="text-[10px] text-rpg-text-secondary shrink-0">día {phase.startDay}</span>
                         </div>
-                        <ul className="space-y-1">
-                          {phase.behaviors.map((pb, j) => (
-                            <li key={j} className="text-xs flex items-start gap-2">
-                              <span className="text-base">{pb.icon}</span>
-                              <div className="min-w-0">
-                                <div className="font-medium">{pb.name}</div>
-                                <div className="text-[10px] text-rpg-text-secondary">
-                                  {pb.slot === 'morning' ? 'mañana' : pb.slot === 'midday' ? 'mediodía' : pb.slot === 'afternoon' ? 'tarde' : 'noche'} · {pb.category}
-                                </div>
-                                {pb.startRitual.length > 0 && (
-                                  <div className="text-[10px] text-rpg-text-secondary mt-1">
-                                    {pb.startRitual.map((s, k) => <div key={k}>· {s}</div>)}
-                                  </div>
-                                )}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="text-xs">
+                          <span className="text-cyan-300 font-bold">{phase.minutes} min</span>
+                          <span className="text-rpg-text-secondary"> · mín. {phase.minimal ?? Math.max(1, Math.ceil(phase.minutes / 2))} min</span>
+                        </div>
+                        <div className="text-[10px] text-rpg-text-secondary">
+                          Aplica a: {phase.behaviors.length === 0
+                            ? <span className="italic">todos los hábitos del objetivo</span>
+                            : phase.behaviors.map((n) => `"${n}"`).join(', ')}
+                        </div>
                       </div>
                     ))}
                     <p className="text-[10px] text-rpg-text-secondary">
-                      Al aplicar se <strong>reemplazan</strong> los hábitos actuales del objetivo. Tendrás que pulsar "Guardar cambios" para confirmar.
+                      Al aplicar se <strong>sobrescriben las fases</strong> (curva de niveles) de los hábitos listados. Tendrás que pulsar "Guardar cambios" para confirmar.
                     </p>
                   </>
                 ) : (
-                  <p className="text-xs text-rpg-text-secondary">{aiProposal.text}</p>
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase tracking-widest text-red-300 font-bold">La IA no pudo generar una propuesta</p>
+                    <pre className="text-[10px] text-rpg-text-secondary whitespace-pre-wrap font-mono bg-black/40 p-2 rounded-lg max-h-48 overflow-y-auto">{aiProposal.text}</pre>
+                    <p className="text-[10px] text-rpg-text-secondary">
+                      Prueba a ajustar el contexto (campo de arriba) y volver a generar.
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="p-4 border-t border-white/10 flex gap-2">

@@ -255,27 +255,21 @@ export async function chatWithCoach(
 // Reformulación de objetivo con IA
 // ---------------------------------------------------------------------------
 
-/** Una fase propuesta por el agente. Cada fase agrupa behaviors que se
- *  introducen juntos cuando llega el momento. */
+/** Una fase propuesta por el agente. Una fase = un escalón en la curva
+ *  (`customLevels[]`) de los behaviors del objetivo. */
 export interface ProposedPhase {
-  /** Etiqueta corta: "Fase 1 — Arrancar suave", "Fase 2 — Subir volumen"… */
+  /** Etiqueta corta: "Fase 1 — Arrancar", "Fase 2 — Subir volumen"… */
   label: string;
   /** Días desde hoy en los que empieza esta fase (1 = mañana). */
   startDay: number;
-  /** Behaviors concretos de esta fase. */
-  behaviors: ProposedBehavior[];
-}
-
-/** Behavior propuesto por el agente. Mapea 1:1 al modelo Behavior del motor. */
-export interface ProposedBehavior {
-  name: string;
-  icon: string;
-  /** Micro-pasos del ritual de arranque (2-5 strings cortos). */
-  startRitual: string[];
-  /** Slot preferido del día (mañana/mediodía/tarde/noche). */
-  slot: 'morning' | 'midday' | 'afternoon' | 'night';
-  /** Categoría funcional. */
-  category: 'movement' | 'nutrition' | 'mind' | 'sleep' | 'learning' | 'work' | 'other';
+  /** Duración objetivo en minutos para ESTA fase. */
+  minutes: number;
+  /** Versión mínima (mantenimiento) en minutos. Opcional: si no viene,
+   *  se calcula como ceil(minutes/2). */
+  minimal?: number;
+  /** Nombres de los behaviors a los que aplica esta fase. Si vacío, aplica
+   *  a todos los behaviors activos del objetivo. */
+  behaviors: string[];
 }
 
 /** Respuesta del agente: fases estructuradas o, si falla el parseo, texto libre. */
@@ -285,7 +279,7 @@ export type GoalProposal =
 
 const PROPOSAL_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
 
-TAREA ESPECÍFICA: reformular las FASES de un objetivo del usuario.
+TAREA ESPECÍFICA: reformular las FASES (la curva de niveles) de los behaviors de un objetivo.
 
 REGLAS OBLIGATORIAS:
 - Devuelve EXCLUSIVAMENTE JSON válido con este esquema exacto (sin markdown, sin \`\`\`):
@@ -295,30 +289,30 @@ REGLAS OBLIGATORIAS:
     {
       "label": "Fase 1 — <título corto>",
       "startDay": 1,
-      "behaviors": [
-        {
-          "name": "<verbo + objeto, máx. 5 palabras>",
-          "icon": "<1 emoji representativo>",
-          "category": "movement|nutrition|mind|sleep|learning|work|other",
-          "slot": "morning|midday|afternoon|night",
-          "startRitual": ["<paso 1>", "<paso 2>", "<paso 3>"]
-        }
-      ]
+      "minutes": 5,
+      "behaviors": ["<nombre exacto de un behavior existente>"]
+    },
+    {
+      "label": "Fase 2 — <título corto>",
+      "startDay": 8,
+      "minutes": 15,
+      "behaviors": ["<nombre exacto>"]
     }
   ]
 }
 
-- 2 a 4 fases, en orden cronológico (startDay ascendente).
+- 2 a 5 fases, en orden cronológico (startDay ascendente).
 - Fase 1 empieza en startDay=1, las siguientes más tarde.
-- Cada fase tiene 1-3 behaviors. En total, 3-6 behaviors en todas las fases.
-- Progresión ESCALABLE y EFECTIVA: la fase 1 debe ser trivial (2-5 min, 1 behavior),
-  las siguientes suben volumen/intensidad o añaden un behavior complementario.
-- Considera el DETALLE del usuario (lesiones, horarios, restricciones) para
-  que la propuesta sea REALISTA.
-- Considera los LOGS y ADHERENCIA previos si existen: si falla los lunes,
-  no pongas algo crítico en lunes; si tiene adherencia >70%, sube más rápido.
-- NO repitas behaviors ya activos del objetivo.
-- "startRitual" son PASOS CONCRETOS del comportamiento (no placeholders genéricos).
+- Cada fase aplica a UNO O VARIOS behaviors ya activos del objetivo (escribe el
+  nombre EXACTO tal como aparece en la lista). Si "behaviors" está vacío [],
+  la fase aplica a TODOS los behaviors del objetivo.
+- "minutes" es el OBJETIVO de la fase: empieza trivial (2-10 min) y sube
+  progresivamente. Usa números enteros.
+- Progresión ESCALABLE y EFECTIVA: la fase 1 debe ser trivial (2-5 min),
+  las siguientes suben volumen o añaden dificultad.
+- Considera el DETALLE del usuario (lesiones, horarios, restricciones).
+- Considera los LOGS y ADHERENCIA previos si existen.
+- NO inventes behaviors nuevos; la propuesta SOLO redefine los existentes.
 `;
 
 /** Llama al LLM para reformular las fases de un objetivo. Si no hay IA o el
@@ -399,31 +393,21 @@ export function parseGoalProposal(raw: string): GoalProposal {
   if (!Array.isArray(obj.phases) || obj.phases.length === 0) {
     return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
   }
-  const validCategories = new Set(['movement', 'nutrition', 'mind', 'sleep', 'learning', 'work', 'other']);
-  const validSlots = new Set(['morning', 'midday', 'afternoon', 'night']);
   const phases: ProposedPhase[] = [];
   for (const rawPhase of obj.phases) {
     if (!rawPhase || typeof rawPhase !== 'object') continue;
-    const p = rawPhase as { label?: unknown; startDay?: unknown; behaviors?: unknown };
+    const p = rawPhase as { label?: unknown; startDay?: unknown; minutes?: unknown; minimal?: unknown; behaviors?: unknown };
     if (typeof p.label !== 'string') continue;
     const startDay = typeof p.startDay === 'number' && p.startDay >= 1 ? Math.floor(p.startDay) : 1;
-    if (!Array.isArray(p.behaviors)) continue;
-    const behaviors: ProposedBehavior[] = [];
-    for (const rawB of p.behaviors) {
-      if (!rawB || typeof rawB !== 'object') continue;
-      const b = rawB as { name?: unknown; icon?: unknown; category?: unknown; slot?: unknown; startRitual?: unknown };
-      if (typeof b.name !== 'string' || b.name.trim().length === 0) continue;
-      const category = typeof b.category === 'string' && validCategories.has(b.category) ? b.category as ProposedBehavior['category'] : 'other';
-      const slot = typeof b.slot === 'string' && validSlots.has(b.slot) ? b.slot as ProposedBehavior['slot'] : 'morning';
-      const icon = typeof b.icon === 'string' && b.icon.length > 0 ? b.icon : '✨';
-      const ritual = Array.isArray(b.startRitual)
-        ? b.startRitual.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).slice(0, 6)
-        : [];
-      behaviors.push({ name: b.name.trim(), icon, category, slot, startRitual: ritual });
-    }
-    if (behaviors.length > 0) {
-      phases.push({ label: p.label.trim(), startDay, behaviors });
-    }
+    const minutes = typeof p.minutes === 'number' && p.minutes > 0 ? Math.floor(p.minutes) : null;
+    if (minutes === null) continue; // sin minutos no podemos construir la fase
+    const minimal = typeof p.minimal === 'number' && p.minimal > 0 && p.minimal <= minutes
+      ? Math.floor(p.minimal)
+      : Math.max(1, Math.ceil(minutes / 2));
+    const behaviors = Array.isArray(p.behaviors)
+      ? p.behaviors.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
+      : [];
+    phases.push({ label: p.label.trim(), startDay, minutes, minimal, behaviors });
   }
   if (phases.length === 0) return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
   // Ordena por startDay ascendente por seguridad.

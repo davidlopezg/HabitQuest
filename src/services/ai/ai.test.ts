@@ -237,24 +237,44 @@ test('parseGoalProposal: JSON puro válido → ok con fases', () => {
   const raw = JSON.stringify({
     rationale: 'Empezar suave y subir.',
     phases: [
-      { label: 'Fase 1 — Arrancar', startDay: 1, behaviors: [{ name: 'Caminar 10 min', icon: '🚶', category: 'movement', slot: 'morning', startRitual: ['Ponerse zapatillas', 'Salir por la puerta'] }] },
-      { label: 'Fase 2 — Subir', startDay: 8, behaviors: [{ name: 'Caminar 20 min', icon: '🚶', category: 'movement', slot: 'morning', startRitual: [] }] },
+      { label: 'Fase 1 — Arrancar', startDay: 1, minutes: 5, behaviors: ['Caminar'] },
+      { label: 'Fase 2 — Subir', startDay: 8, minutes: 15, behaviors: ['Caminar'] },
     ],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
   if (r.ok) {
     assert.equal(r.phases.length, 2);
-    assert.equal(r.phases[0].behaviors[0].name, 'Caminar 10 min');
+    assert.equal(r.phases[0].minutes, 5);
+    assert.equal(r.phases[0].minimal, 3, 'default minimal = ceil(minutes/2)');
+    assert.deepEqual(r.phases[0].behaviors, ['Caminar']);
     assert.equal(r.phases[1].startDay, 8);
   }
 });
 
-test('parseGoalProposal: acepta JSON envuelto en ```json```', () => {
-  const raw = '```json\n{"rationale":"x","phases":[{"label":"F1","startDay":1,"behaviors":[{"name":"A","icon":"✨","category":"mind","slot":"morning","startRitual":["x"]}]}]}\n```';
+test('parseGoalProposal: minimal explícito se respeta si está dentro de rango', () => {
+  const raw = JSON.stringify({
+    phases: [{ label: 'F', startDay: 1, minutes: 20, minimal: 5, behaviors: [] }],
+  });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
-  if (r.ok) assert.equal(r.phases[0].behaviors[0].name, 'A');
+  if (r.ok) assert.equal(r.phases[0].minimal, 5);
+});
+
+test('parseGoalProposal: minimal inválido (>minutes) cae al default', () => {
+  const raw = JSON.stringify({
+    phases: [{ label: 'F', startDay: 1, minutes: 5, minimal: 50, behaviors: [] }],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.phases[0].minimal, 3);
+});
+
+test('parseGoalProposal: acepta JSON envuelto en ```json```', () => {
+  const raw = '```json\n{"rationale":"x","phases":[{"label":"F1","startDay":1,"minutes":5,"behaviors":["A"]}]}\n```';
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.phases[0].behaviors, ['A']);
 });
 
 test('parseGoalProposal: JSON inválido → ok=false con texto', () => {
@@ -268,59 +288,42 @@ test('parseGoalProposal: fases vacías → ok=false', () => {
   assert.equal(r.ok, false);
 });
 
-test('parseGoalProposal: descarta behaviors con nombre vacío', () => {
+test('parseGoalProposal: fase sin minutes → ok=false', () => {
+  const r = parseGoalProposal(JSON.stringify({
+    phases: [{ label: 'F', startDay: 1, behaviors: ['X'] }],
+  }));
+  assert.equal(r.ok, false);
+});
+
+test('parseGoalProposal: behaviors vacío es válido (significa "todos")', () => {
   const raw = JSON.stringify({
-    phases: [{
-      label: 'F1', startDay: 1,
-      behaviors: [
-        { name: '', icon: '✨', category: 'mind', slot: 'morning', startRitual: [] },
-        { name: 'Válido', icon: '✨', category: 'mind', slot: 'morning', startRitual: [] },
-      ],
-    }],
+    phases: [{ label: 'F', startDay: 1, minutes: 5, behaviors: [] }],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
-  if (r.ok) {
-    assert.equal(r.phases[0].behaviors.length, 1);
-    assert.equal(r.phases[0].behaviors[0].name, 'Válido');
-  }
+  if (r.ok) assert.deepEqual(r.phases[0].behaviors, []);
 });
 
-test('parseGoalProposal: descarta phase sin behaviors válidos', () => {
+test('parseGoalProposal: descarta entradas con label no-string', () => {
   const raw = JSON.stringify({
     phases: [
-      { label: 'F vacía', startDay: 1, behaviors: [{ name: '', icon: '✨' }] },
-      { label: 'F con datos', startDay: 2, behaviors: [{ name: 'X', icon: '✨', category: 'work', slot: 'midday', startRitual: [] }] },
+      { label: 123, startDay: 1, minutes: 5, behaviors: [] },
+      { label: 'Válida', startDay: 1, minutes: 5, behaviors: [] },
     ],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
   if (r.ok) {
     assert.equal(r.phases.length, 1);
-    assert.equal(r.phases[0].label, 'F con datos');
-  }
-});
-
-test('parseGoalProposal: category/slot inválidos caen a defaults', () => {
-  const raw = JSON.stringify({
-    phases: [{
-      label: 'F1', startDay: 1,
-      behaviors: [{ name: 'X', icon: '✨', category: 'inventado', slot: 'medianoche', startRitual: [] }],
-    }],
-  });
-  const r = parseGoalProposal(raw);
-  assert.equal(r.ok, true);
-  if (r.ok) {
-    assert.equal(r.phases[0].behaviors[0].category, 'other');
-    assert.equal(r.phases[0].behaviors[0].slot, 'morning');
+    assert.equal(r.phases[0].label, 'Válida');
   }
 });
 
 test('parseGoalProposal: ordena fases por startDay ascendente', () => {
   const raw = JSON.stringify({
     phases: [
-      { label: 'Tarde', startDay: 30, behaviors: [{ name: 'X', icon: '✨', category: 'work', slot: 'morning', startRitual: [] }] },
-      { label: 'Temprano', startDay: 1, behaviors: [{ name: 'Y', icon: '✨', category: 'work', slot: 'morning', startRitual: [] }] },
+      { label: 'Tarde', startDay: 30, minutes: 30, behaviors: [] },
+      { label: 'Temprano', startDay: 1, minutes: 5, behaviors: [] },
     ],
   });
   const r = parseGoalProposal(raw);
@@ -329,4 +332,13 @@ test('parseGoalProposal: ordena fases por startDay ascendente', () => {
     assert.equal(r.phases[0].label, 'Temprano');
     assert.equal(r.phases[1].label, 'Tarde');
   }
+});
+
+test('parseGoalProposal: filters nombres vacíos en behaviors[]', () => {
+  const raw = JSON.stringify({
+    phases: [{ label: 'F', startDay: 1, minutes: 5, behaviors: ['X', '', '   ', 'Y'] }],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.phases[0].behaviors, ['X', 'Y']);
 });
