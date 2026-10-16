@@ -2643,9 +2643,24 @@ function GoalDetailOverlay({
                 ) : (
                   <div className="space-y-2">
                     <p className="text-[11px] uppercase tracking-widest text-red-300 font-bold">La IA no pudo generar una propuesta</p>
-                    <pre className="text-[10px] text-rpg-text-secondary whitespace-pre-wrap font-mono bg-black/40 p-2 rounded-lg max-h-48 overflow-y-auto">{aiProposal.text}</pre>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-rpg-text-secondary">Respuesta cruda del modelo:</p>
+                      <button
+                        onClick={() => {
+                          try { void navigator.clipboard.writeText(aiProposal.text); } catch { /* ignore */ }
+                        }}
+                        className="px-2 py-1 rounded bg-white/10 text-[10px] font-bold"
+                        title="Copia la respuesta cruda al portapapeles para que puedas pegarla aquí en el chat"
+                      >
+                        📋 Copiar
+                      </button>
+                    </div>
+                    <pre
+                      className="text-[10px] text-rpg-text-secondary whitespace-pre-wrap font-mono bg-black/40 p-2 rounded-lg max-h-48 overflow-y-auto select-text"
+                      style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+                    >{aiProposal.text}</pre>
                     <p className="text-[10px] text-rpg-text-secondary">
-                      Prueba a ajustar el contexto (campo de arriba) y volver a generar.
+                      Pulsa "Copiar" y pégalo en el chat para que veamos qué devolvió la IA y arreglemos el parser.
                     </p>
                   </div>
                 )}
