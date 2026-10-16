@@ -7,7 +7,7 @@
  * usuario. Sin API key, el coach responde con reglas (offline).
  */
 
-import type { CoachState } from '../../engine/index.ts';
+import type { CoachState, Goal } from '../../engine/index.ts';
 import {
   analyzePatterns,
   classifyReason,
@@ -250,6 +250,187 @@ export async function chatWithCoach(
 // LLM, estos análisis también se incluyen en el SYSTEM_PROMPT vía
 // summarizeState para que la IA los use como base y los humanice.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Reformulación de objetivo con IA
+// ---------------------------------------------------------------------------
+
+/** Una fase propuesta por el agente. Cada fase agrupa behaviors que se
+ *  introducen juntos cuando llega el momento. */
+export interface ProposedPhase {
+  /** Etiqueta corta: "Fase 1 — Arrancar suave", "Fase 2 — Subir volumen"… */
+  label: string;
+  /** Días desde hoy en los que empieza esta fase (1 = mañana). */
+  startDay: number;
+  /** Behaviors concretos de esta fase. */
+  behaviors: ProposedBehavior[];
+}
+
+/** Behavior propuesto por el agente. Mapea 1:1 al modelo Behavior del motor. */
+export interface ProposedBehavior {
+  name: string;
+  icon: string;
+  /** Micro-pasos del ritual de arranque (2-5 strings cortos). */
+  startRitual: string[];
+  /** Slot preferido del día (mañana/mediodía/tarde/noche). */
+  slot: 'morning' | 'midday' | 'afternoon' | 'night';
+  /** Categoría funcional. */
+  category: 'movement' | 'nutrition' | 'mind' | 'sleep' | 'learning' | 'work' | 'other';
+}
+
+/** Respuesta del agente: fases estructuradas o, si falla el parseo, texto libre. */
+export type GoalProposal =
+  | { ok: true; phases: ProposedPhase[]; rationale: string }
+  | { ok: false; text: string };
+
+const PROPOSAL_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+TAREA ESPECÍFICA: reformular las FASES de un objetivo del usuario.
+
+REGLAS OBLIGATORIAS:
+- Devuelve EXCLUSIVAMENTE JSON válido con este esquema exacto (sin markdown, sin \`\`\`):
+{
+  "rationale": "<1-2 frases explicando por qué esta progresión>",
+  "phases": [
+    {
+      "label": "Fase 1 — <título corto>",
+      "startDay": 1,
+      "behaviors": [
+        {
+          "name": "<verbo + objeto, máx. 5 palabras>",
+          "icon": "<1 emoji representativo>",
+          "category": "movement|nutrition|mind|sleep|learning|work|other",
+          "slot": "morning|midday|afternoon|night",
+          "startRitual": ["<paso 1>", "<paso 2>", "<paso 3>"]
+        }
+      ]
+    }
+  ]
+}
+
+- 2 a 4 fases, en orden cronológico (startDay ascendente).
+- Fase 1 empieza en startDay=1, las siguientes más tarde.
+- Cada fase tiene 1-3 behaviors. En total, 3-6 behaviors en todas las fases.
+- Progresión ESCALABLE y EFECTIVA: la fase 1 debe ser trivial (2-5 min, 1 behavior),
+  las siguientes suben volumen/intensidad o añaden un behavior complementario.
+- Considera el DETALLE del usuario (lesiones, horarios, restricciones) para
+  que la propuesta sea REALISTA.
+- Considera los LOGS y ADHERENCIA previos si existen: si falla los lunes,
+  no pongas algo crítico en lunes; si tiene adherencia >70%, sube más rápido.
+- NO repitas behaviors ya activos del objetivo.
+- "startRitual" son PASOS CONCRETOS del comportamiento (no placeholders genéricos).
+`;
+
+/** Llama al LLM para reformular las fases de un objetivo. Si no hay IA o el
+ *  JSON parsea mal, devuelve {ok:false, text} con un mensaje humano. */
+export async function proposeGoalPhases(
+  goal: Goal,
+  detail: string,
+  state: CoachState,
+  cfg: AIConfig = getAIConfig(),
+): Promise<GoalProposal> {
+  const ctx = summarizeState(state, todayKey());
+  const behaviorsForGoal = state.behaviors.filter((b) => b.goalId === goal.id);
+  const behaviorsSummary = behaviorsForGoal.length === 0
+    ? 'Aún no hay behaviors activos para este objetivo.'
+    : behaviorsForGoal.map((b) => `- ${b.name} (${b.icon}, nivel ${b.currentLevel}, adherencia 7d ${Math.round(adherence(state.logs, b, todayKey(), 7).rate * 100)}%)`).join('\n');
+  const userText = [
+    `OBJETIVO: "${goal.title}"`,
+    `Dicho por el usuario: "${goal.raw}"`,
+    `Área: ${goal.area}`,
+    detail ? `\nDETALLE / CONTEXTO DEL USUARIO:\n${detail}` : '(sin detalle adicional)',
+    `\nBEHAVIORS YA ACTIVOS EN ESTE OBJETIVO (no repetir):\n${behaviorsSummary}`,
+    `\nCONTEXTO GLOBAL DEL USUARIO:\n${ctx}`,
+  ].join('\n');
+  if (!cfg.enabled) {
+    return { ok: false, text: 'La IA no está configurada. Añade una API key en .env (VITE_MINIMAX_API_KEY=...) o usa un proxy (VITE_AI_PROXY_URL=...) para habilitar la reformulación con IA.' };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+    else if (cfg.proxyToken) headers.Authorization = `Bearer ${cfg.proxyToken}`;
+    const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: PROPOSAL_SYSTEM_PROMPT },
+          { role: 'user', content: userText },
+        ],
+        temperature: 0.6,
+        max_tokens: 1200,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`IA respondió ${res.status}: ${body.slice(0, 160)}`);
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('Respuesta vacía del modelo.');
+    return parseGoalProposal(content);
+  } catch (e) {
+    return { ok: false, text: e instanceof Error ? e.message : 'Error desconocido al llamar a la IA.' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Parsea la respuesta cruda del LLM. Acepta JSON puro o envuelto en ```json```.
+ *  Si no encaja con el esquema, devuelve {ok:false, text}. */
+export function parseGoalProposal(raw: string): GoalProposal {
+  // Quita fences si los hay.
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return { ok: false, text: raw };
+  }
+  if (!parsed || typeof parsed !== 'object') return { ok: false, text: raw };
+  const obj = parsed as { rationale?: unknown; phases?: unknown };
+  if (!Array.isArray(obj.phases) || obj.phases.length === 0) {
+    return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
+  }
+  const validCategories = new Set(['movement', 'nutrition', 'mind', 'sleep', 'learning', 'work', 'other']);
+  const validSlots = new Set(['morning', 'midday', 'afternoon', 'night']);
+  const phases: ProposedPhase[] = [];
+  for (const rawPhase of obj.phases) {
+    if (!rawPhase || typeof rawPhase !== 'object') continue;
+    const p = rawPhase as { label?: unknown; startDay?: unknown; behaviors?: unknown };
+    if (typeof p.label !== 'string') continue;
+    const startDay = typeof p.startDay === 'number' && p.startDay >= 1 ? Math.floor(p.startDay) : 1;
+    if (!Array.isArray(p.behaviors)) continue;
+    const behaviors: ProposedBehavior[] = [];
+    for (const rawB of p.behaviors) {
+      if (!rawB || typeof rawB !== 'object') continue;
+      const b = rawB as { name?: unknown; icon?: unknown; category?: unknown; slot?: unknown; startRitual?: unknown };
+      if (typeof b.name !== 'string' || b.name.trim().length === 0) continue;
+      const category = typeof b.category === 'string' && validCategories.has(b.category) ? b.category as ProposedBehavior['category'] : 'other';
+      const slot = typeof b.slot === 'string' && validSlots.has(b.slot) ? b.slot as ProposedBehavior['slot'] : 'morning';
+      const icon = typeof b.icon === 'string' && b.icon.length > 0 ? b.icon : '✨';
+      const ritual = Array.isArray(b.startRitual)
+        ? b.startRitual.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).slice(0, 6)
+        : [];
+      behaviors.push({ name: b.name.trim(), icon, category, slot, startRitual: ritual });
+    }
+    if (behaviors.length > 0) {
+      phases.push({ label: p.label.trim(), startDay, behaviors });
+    }
+  }
+  if (phases.length === 0) return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
+  // Ordena por startDay ascendente por seguridad.
+  phases.sort((a, b) => a.startDay - b.startDay);
+  const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
+  return { ok: true, phases, rationale };
+}
 
 /** Tendencia de adherencia comparando 7d vs 14d. Usa también el histórico de
  *  conversaciones para detectar si el ánimo del usuario ha mejorado o

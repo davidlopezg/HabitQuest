@@ -66,6 +66,8 @@ import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/supabase.ts';
 import { NS, savePrimary, idbGet } from './services/persistence.ts';
+import { proposeGoalPhases, type GoalProposal } from './services/ai/coach.ts';
+import { getAIConfig } from './services/ai/config.ts';
 import type { BehaviorLevelDef } from './engine/index.ts';
 
 const STORAGE_KEY = 'habitquest_coach';
@@ -1044,8 +1046,11 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             logs={cs.logs}
             counters={cs.counters}
             today={today}
+            state={cs}
+            onNotice={setNotice}
             onClose={() => setDetailGoalId(null)}
             onCommit={(behaviors) => setCs((prev) => commitGoalDetail(prev, behaviors, today))}
+            onUpdateDetail={(goalId, detail) => setCs((prev) => ({ ...prev, goals: prev.goals.map((g) => g.id === goalId ? { ...g, detail } : g) }))}
             onRebuildGoal={(goalId) => setCs((prev) => rebuildGoalBehaviors(prev, goalId, today))}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
@@ -1865,10 +1870,16 @@ interface GoalDetailProps {
   logs: BehaviorLogEntry[];
   counters: CoachCounters;
   today: string;
+  /** Estado completo del coach (necesario para que la IA tenga contexto). */
+  state: CoachState;
+  /** Para notificar al usuario tras aplicar la propuesta. */
+  onNotice?: (text: string) => void;
   onClose: () => void;
   /** Aplica todos los cambios del draft al estado global de una vez y rebuilda
    *  el plan. La ficha ya cerró el overlay al llamar a este callback. */
   onCommit: (behaviors: Behavior[]) => void;
+  /** Actualiza solo el campo `detail` del goal (no toca behaviors ni rebuilda). */
+  onUpdateDetail: (goalId: string, detail: string) => void;
   /** Regenera los behaviors de un objetivo huérfano usando su goal.raw. */
   onRebuildGoal: (goalId: string) => void;
   onIntroduce: (goalId: string) => void;
@@ -1937,15 +1948,24 @@ function GoalDetailOverlay({
   today,
   onClose,
   onCommit,
+  onUpdateDetail,
   onRebuildGoal,
   onIntroduce,
   onDelete,
   canIntroduce,
+  state: currentState,
+  onNotice,
 }: GoalDetailProps) {
   // ----- Draft: copia local de los behaviors al abrir la ficha -----
   // Todo lo que el usuario edite (fases, hora, agenda, estrategias) modifica
   // este draft. Solo al pulsar Guardar se aplica al estado global.
   const [draft, setDraft] = useState<Behavior[]>(() => behaviors.map(cloneBehavior));
+  // Detalle para el agente IA (copia local; se guarda al pulsar "Guardar contexto"
+  // o al aplicar la propuesta de la IA).
+  const [draftDetail, setDraftDetail] = useState<string>(goal.detail ?? '');
+  // Propuesta de fases devuelta por la IA. Mientras es null, no se muestra el preview.
+  const [aiProposal, setAiProposal] = useState<GoalProposal | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [strategyOpenId, setStrategyOpenId] = useState<string | null>(null);
 
@@ -2004,7 +2024,64 @@ function GoalDetailOverlay({
     onClose();
   }
 
+  function saveDetail() {
+    if (draftDetail === (goal.detail ?? '')) return;
+    onUpdateDetail(goal.id, draftDetail);
+  }
+
+  async function askAi() {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiProposal(null);
+    try {
+      const proposal = await proposeGoalPhases(goal, draftDetail, currentState, getAIConfig());
+      setAiProposal(proposal);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  /** Aplica la propuesta al draft de behaviors. Las fases se numeran a partir de
+   *  hoy y los behaviors se reemplazan en orden. */
+  function applyProposal(p: Extract<GoalProposal, { ok: true }>) {
+    const newBehaviors: Behavior[] = [];
+    p.phases.forEach((phase, phaseIdx) => {
+      phase.behaviors.forEach((pb, bIdx) => {
+        const id = `${goal.id}__ai_${phaseIdx}_${bIdx}_${Date.now()}`;
+        newBehaviors.push({
+          id,
+          goalId: goal.id,
+          templateId: 'custom',
+          name: pb.name,
+          icon: pb.icon,
+          category: pb.category === 'work' ? 'productivity' : (pb.category === 'mind' ? 'mindfulness' : pb.category),
+          enabled: true,
+          order: newBehaviors.length,
+          introducedAt: todayKey(),
+          kind: 'volume',
+          startRitual: pb.startRitual,
+          currentLevel: 1,
+          preferredSlots: [pb.slot],
+          customLevels: [
+            { level: 1, minutes: 5, minimal: 1, need: 5, window: 7 },
+            { level: 2, minutes: 10, minimal: 2, need: 5, window: 7 },
+            { level: 3, minutes: 20, minimal: 5, need: 5, window: 7 },
+          ],
+          schedule: undefined,
+        });
+      });
+    });
+    setDraft(newBehaviors);
+    setAiProposal(null);
+    onNotice?.(`Propuesta aplicada: ${p.phases.length} fase(s), ${newBehaviors.length} hábito(s). Pulsa "Guardar cambios" abajo.`);
+  }
+
+  function discardProposal() {
+    setAiProposal(null);
+  }
+
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -2034,6 +2111,40 @@ function GoalDetailOverlay({
 
         {/* Cuerpo scrollable */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Detalle para el agente IA + botón de reformular */}
+          <div className="rpg-card p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🤖</span>
+              <h4 className="font-heading font-bold text-sm">Contexto para el coach IA</h4>
+            </div>
+            <p className="text-[11px] text-rpg-text-secondary">
+              Restricciones, horarios, lesiones, preferencias… el agente los usa al reformular las fases.
+            </p>
+            <textarea
+              value={draftDetail}
+              onChange={(e) => setDraftDetail(e.target.value)}
+              placeholder="Ej. tengo la rodilla mala, no puedo correr. Trabajo L-V de 9 a 18."
+              rows={3}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder:text-rpg-text-secondary resize-none"
+            />
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <button
+                onClick={saveDetail}
+                disabled={draftDetail === (goal.detail ?? '')}
+                className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Guardar contexto
+              </button>
+              <button
+                onClick={askAi}
+                disabled={aiLoading}
+                className="px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 text-xs font-bold disabled:opacity-40"
+              >
+                {aiLoading ? '⏳ Pensando…' : '✨ Reformular fases con IA'}
+              </button>
+            </div>
+          </div>
+
           {behaviors.length === 0 && (
             <div className="text-center py-6 space-y-3">
               <p className="text-sm text-rpg-text-secondary">
@@ -2464,7 +2575,87 @@ function GoalDetailOverlay({
           </div>
         </div>
       </motion.div>
-    </motion.div>
+      </motion.div>
+
+      {/* Preview de la propuesta de la IA */}
+      <AnimatePresence>
+        {aiProposal && (
+          <motion.div
+            key="ai-preview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={discardProposal}
+            className="fixed inset-0 z-[120] bg-black/90 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="rpg-card w-full max-w-lg max-h-[85vh] flex flex-col"
+            >
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Propuesta de la IA</p>
+                  <h3 className="font-heading font-bold text-lg">Reformulación de fases</h3>
+                </div>
+                <button onClick={discardProposal} className="p-2 text-rpg-text-secondary"><X size={20} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {aiProposal.ok ? (
+                  <>
+                    {aiProposal.rationale && (
+                      <p className="text-xs text-rpg-text-secondary italic">{aiProposal.rationale}</p>
+                    )}
+                    {aiProposal.phases.map((phase, idx) => (
+                      <div key={idx} className="rpg-card p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-heading font-bold text-sm">{phase.label}</h4>
+                          <span className="text-[10px] text-rpg-text-secondary">día {phase.startDay}</span>
+                        </div>
+                        <ul className="space-y-1">
+                          {phase.behaviors.map((pb, j) => (
+                            <li key={j} className="text-xs flex items-start gap-2">
+                              <span className="text-base">{pb.icon}</span>
+                              <div className="min-w-0">
+                                <div className="font-medium">{pb.name}</div>
+                                <div className="text-[10px] text-rpg-text-secondary">
+                                  {pb.slot === 'morning' ? 'mañana' : pb.slot === 'midday' ? 'mediodía' : pb.slot === 'afternoon' ? 'tarde' : 'noche'} · {pb.category}
+                                </div>
+                                {pb.startRitual.length > 0 && (
+                                  <div className="text-[10px] text-rpg-text-secondary mt-1">
+                                    {pb.startRitual.map((s, k) => <div key={k}>· {s}</div>)}
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-rpg-text-secondary">
+                      Al aplicar se <strong>reemplazan</strong> los hábitos actuales del objetivo. Tendrás que pulsar "Guardar cambios" para confirmar.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-rpg-text-secondary">{aiProposal.text}</p>
+                )}
+              </div>
+              <div className="p-4 border-t border-white/10 flex gap-2">
+                {aiProposal.ok ? (
+                  <>
+                    <button onClick={discardProposal} className="flex-1 py-2.5 rounded-lg bg-white/10 text-sm font-bold">Cancelar</button>
+                    <button onClick={() => applyProposal(aiProposal)} className="flex-1 py-2.5 rounded-lg bg-cyan-500/20 text-cyan-300 text-sm font-bold">Aplicar propuesta</button>
+                  </>
+                ) : (
+                  <button onClick={discardProposal} className="flex-1 py-2.5 rounded-lg bg-white/10 text-sm font-bold">Cerrar</button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

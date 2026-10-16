@@ -228,3 +228,105 @@ test('ai: whyNotCompleting devuelve respuesta por hábito problemático', () => 
   assert.ok(reply.includes('Caminar'));
   assert.match(reply, /work|trabajo/i, 'menciona el motivo detectado');
 });
+
+// ── Tests del parser de propuesta de fases (parseGoalProposal) ───────────────
+
+import { parseGoalProposal } from './coach.ts';
+
+test('parseGoalProposal: JSON puro válido → ok con fases', () => {
+  const raw = JSON.stringify({
+    rationale: 'Empezar suave y subir.',
+    phases: [
+      { label: 'Fase 1 — Arrancar', startDay: 1, behaviors: [{ name: 'Caminar 10 min', icon: '🚶', category: 'movement', slot: 'morning', startRitual: ['Ponerse zapatillas', 'Salir por la puerta'] }] },
+      { label: 'Fase 2 — Subir', startDay: 8, behaviors: [{ name: 'Caminar 20 min', icon: '🚶', category: 'movement', slot: 'morning', startRitual: [] }] },
+    ],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.phases.length, 2);
+    assert.equal(r.phases[0].behaviors[0].name, 'Caminar 10 min');
+    assert.equal(r.phases[1].startDay, 8);
+  }
+});
+
+test('parseGoalProposal: acepta JSON envuelto en ```json```', () => {
+  const raw = '```json\n{"rationale":"x","phases":[{"label":"F1","startDay":1,"behaviors":[{"name":"A","icon":"✨","category":"mind","slot":"morning","startRitual":["x"]}]}]}\n```';
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.phases[0].behaviors[0].name, 'A');
+});
+
+test('parseGoalProposal: JSON inválido → ok=false con texto', () => {
+  const r = parseGoalProposal('esto no es json');
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.text, 'esto no es json');
+});
+
+test('parseGoalProposal: fases vacías → ok=false', () => {
+  const r = parseGoalProposal(JSON.stringify({ rationale: 'sin fases', phases: [] }));
+  assert.equal(r.ok, false);
+});
+
+test('parseGoalProposal: descarta behaviors con nombre vacío', () => {
+  const raw = JSON.stringify({
+    phases: [{
+      label: 'F1', startDay: 1,
+      behaviors: [
+        { name: '', icon: '✨', category: 'mind', slot: 'morning', startRitual: [] },
+        { name: 'Válido', icon: '✨', category: 'mind', slot: 'morning', startRitual: [] },
+      ],
+    }],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.phases[0].behaviors.length, 1);
+    assert.equal(r.phases[0].behaviors[0].name, 'Válido');
+  }
+});
+
+test('parseGoalProposal: descarta phase sin behaviors válidos', () => {
+  const raw = JSON.stringify({
+    phases: [
+      { label: 'F vacía', startDay: 1, behaviors: [{ name: '', icon: '✨' }] },
+      { label: 'F con datos', startDay: 2, behaviors: [{ name: 'X', icon: '✨', category: 'work', slot: 'midday', startRitual: [] }] },
+    ],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.phases.length, 1);
+    assert.equal(r.phases[0].label, 'F con datos');
+  }
+});
+
+test('parseGoalProposal: category/slot inválidos caen a defaults', () => {
+  const raw = JSON.stringify({
+    phases: [{
+      label: 'F1', startDay: 1,
+      behaviors: [{ name: 'X', icon: '✨', category: 'inventado', slot: 'medianoche', startRitual: [] }],
+    }],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.phases[0].behaviors[0].category, 'other');
+    assert.equal(r.phases[0].behaviors[0].slot, 'morning');
+  }
+});
+
+test('parseGoalProposal: ordena fases por startDay ascendente', () => {
+  const raw = JSON.stringify({
+    phases: [
+      { label: 'Tarde', startDay: 30, behaviors: [{ name: 'X', icon: '✨', category: 'work', slot: 'morning', startRitual: [] }] },
+      { label: 'Temprano', startDay: 1, behaviors: [{ name: 'Y', icon: '✨', category: 'work', slot: 'morning', startRitual: [] }] },
+    ],
+  });
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.phases[0].label, 'Temprano');
+    assert.equal(r.phases[1].label, 'Tarde');
+  }
+});

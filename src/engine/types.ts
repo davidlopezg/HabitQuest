@@ -116,6 +116,10 @@ export interface Goal {
   createdAt: string;
   status: 'active' | 'paused' | 'achieved';
   pipeline: string[]; // templateIds pendientes de introducir (¡no saturar!)
+  /** Contexto libre del usuario para el coach IA (lesiones, horarios,
+   *  preferencias, restricciones…). Solo lo lee el agente, nunca se muestra
+   *  como parte del objetivo. */
+  detail?: string;
 }
 
 export type ReasonCode =
