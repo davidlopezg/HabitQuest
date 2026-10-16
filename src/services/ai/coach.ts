@@ -281,10 +281,14 @@ const PROPOSAL_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
 
 TAREA ESPECÍFICA: reformular las FASES (la curva de niveles) de los behaviors de un objetivo.
 
+REGLA CRÍTICA: la ÚLTIMA fase debe representar el OUTCOME FINAL que el usuario quiere conseguir con ese objetivo, no quedarse en un nivel trivial a medio camino. Si el objetivo es "actividad física regular", la última fase NO puede ser "caminar 5 min": debe ser algo que represente mantener actividad física de forma regular y sostenida (ej. "Caminar 30 min 4 veces/semana"). Las fases intermedias son escalones para llegar ahí.
+
+PISTA: si el goal.raw es vago (ej. "ser más activo", "ponerme en forma", "actividad física recurrente"), INFIERE que el outcome final es mantener el hábito de forma regular y mantenida en el tiempo. Si el goal.raw ya menciona un outcome concreto (ej. "correr 5K", "hacer 100 flexiones"), úsalo tal cual.
+
 REGLAS OBLIGATORIAS:
 - Devuelve EXCLUSIVAMENTE JSON válido con este esquema exacto (sin markdown, sin \`\`\`):
 {
-  "rationale": "<1-2 frases explicando por qué esta progresión>",
+  "rationale": "<1-2 frases explicando por qué esta progresión lleva al outcome final>",
   "phases": [
     {
       "label": "Fase N — <ACCIÓN CONCRETA ejecutable>",
@@ -302,17 +306,18 @@ Formato: "Fase N — <verbo en infinitivo + objeto + duración>". Ejemplos:
   - "Fase 1 — Caminar 1 min dentro de casa"
   - "Fase 2 — Caminar 3 min por la calle"
   - "Fase 3 — Caminar 5 min al aire libre"
-  - "Fase 4 — Caminar 10 min con ropa deportiva"
+  - "Fase 4 — Caminar 30 min 4 veces/semana (objetivo final sostenido)"
 El usuario debe poder LEER el label y saber QUÉ HACER sin abrir más detalles.
 
 OTRAS REGLAS:
-- 2 a 5 fases, en orden cronológico (startDay ascendente).
+- 3 a 5 fases, en orden cronológico (startDay ascendente).
 - Fase 1 empieza en startDay=1, las siguientes más tarde.
 - Cada fase aplica a UNO O VARIOS behaviors ya activos del objetivo (escribe el
   nombre EXACTO tal como aparece en la lista). Si "behaviors" está vacío [],
   la fase aplica a TODOS los behaviors del objetivo.
-- "minutes" es el OBJETIVO de la fase: empieza trivial (1-5 min) y sube
-  progresivamente. Usa números enteros.
+- "minutes" es el OBJETIVO de la fase: empieza trivial (1-5 min) y la ÚLTIMA
+  fase debe acercarse al outcome final (típicamente 20-45 min o un número
+  explícito de repeticiones/sesiones).
 - Considera el DETALLE del usuario (lesiones, horarios, restricciones) tanto en
   el "label" como en "minutes" — si tiene la rodilla mala, no digas "correr".
 - NO inventes behaviors nuevos; la propuesta SOLO redefine los existentes.

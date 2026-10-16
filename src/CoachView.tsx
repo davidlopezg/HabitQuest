@@ -1051,6 +1051,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             onClose={() => setDetailGoalId(null)}
             onCommit={(behaviors) => setCs((prev) => commitGoalDetail(prev, behaviors, today))}
             onUpdateDetail={(goalId, detail) => setCs((prev) => ({ ...prev, goals: prev.goals.map((g) => g.id === goalId ? { ...g, detail } : g) }))}
+            onUpdateGoal={(goalId, patch) => setCs((prev) => ({ ...prev, goals: prev.goals.map((g) => g.id === goalId ? { ...g, ...patch } : g) }))}
             onRebuildGoal={(goalId) => setCs((prev) => rebuildGoalBehaviors(prev, goalId, today))}
             onDelete={deleteGoal}
             onIntroduce={(goalId) => {
@@ -1880,6 +1881,8 @@ interface GoalDetailProps {
   onCommit: (behaviors: Behavior[]) => void;
   /** Actualiza solo el campo `detail` del goal (no toca behaviors ni rebuilda). */
   onUpdateDetail: (goalId: string, detail: string) => void;
+  /** Actualiza título y descripción del goal (lo que ve el LLM al reformular). */
+  onUpdateGoal: (goalId: string, patch: { title?: string; raw?: string }) => void;
   /** Regenera los behaviors de un objetivo huérfano usando su goal.raw. */
   onRebuildGoal: (goalId: string) => void;
   onIntroduce: (goalId: string) => void;
@@ -1949,6 +1952,7 @@ function GoalDetailOverlay({
   onClose,
   onCommit,
   onUpdateDetail,
+  onUpdateGoal,
   onRebuildGoal,
   onIntroduce,
   onDelete,
@@ -1963,6 +1967,12 @@ function GoalDetailOverlay({
   // Detalle para el agente IA (copia local; se guarda al pulsar "Guardar contexto"
   // o al aplicar la propuesta de la IA).
   const [draftDetail, setDraftDetail] = useState<string>(goal.detail ?? '');
+  // Edición inline del título y la descripción del objetivo. Mientras
+  // `editingGoal` es false, se muestra la cabecera normal; cuando es true,
+  // se muestra un mini-form con dos inputs.
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [draftGoalTitle, setDraftGoalTitle] = useState(goal.title);
+  const [draftGoalRaw, setDraftGoalRaw] = useState(goal.raw);
   // Propuesta de fases devuelta por la IA. Mientras es null, no se muestra el preview.
   const [aiProposal, setAiProposal] = useState<GoalProposal | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -2027,6 +2037,18 @@ function GoalDetailOverlay({
   function saveDetail() {
     if (draftDetail === (goal.detail ?? '')) return;
     onUpdateDetail(goal.id, draftDetail);
+  }
+
+  function saveGoalText() {
+    const title = draftGoalTitle.trim();
+    const raw = draftGoalRaw.trim();
+    if (!title || !raw) return;
+    if (title === goal.title && raw === goal.raw) {
+      setEditingGoal(false);
+      return;
+    }
+    onUpdateGoal(goal.id, { title, raw });
+    setEditingGoal(false);
   }
 
   async function askAi() {
@@ -2110,11 +2132,59 @@ function GoalDetailOverlay({
         {/* Cabecera del objetivo */}
         <div className="p-5 pb-3 border-b border-white/10">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Objetivo</p>
-              <h2 className="font-heading font-bold text-2xl leading-tight mt-0.5">{goal.title}</h2>
-              <p className="text-xs text-rpg-text-secondary mt-1 italic truncate">“{goal.raw}”</p>
-            </div>
+            {editingGoal ? (
+              <div className="flex-1 space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Editar objetivo</p>
+                <input
+                  type="text"
+                  value={draftGoalTitle}
+                  onChange={(e) => setDraftGoalTitle(e.target.value)}
+                  placeholder="Título (ej. Actividad física regular)"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm font-medium"
+                />
+                <textarea
+                  value={draftGoalRaw}
+                  onChange={(e) => setDraftGoalRaw(e.target.value)}
+                  placeholder="Descripción completa del objetivo (ej. Quiero hacer actividad física regular y mantenida en el tiempo, empezando desde cero porque estoy sedentario y tengo la rodilla operada)."
+                  rows={3}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs placeholder:text-rpg-text-secondary resize-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setDraftGoalTitle(goal.title);
+                      setDraftGoalRaw(goal.raw);
+                      setEditingGoal(false);
+                    }}
+                    className="flex-1 py-2 rounded-lg bg-white/10 text-xs font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={saveGoalText}
+                    disabled={!draftGoalTitle.trim() || !draftGoalRaw.trim()}
+                    className="flex-1 py-2 rounded-lg bg-cyan-500/20 text-cyan-300 text-xs font-bold disabled:opacity-40"
+                  >
+                    Guardar objetivo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Objetivo</p>
+                  <button
+                    onClick={() => setEditingGoal(true)}
+                    className="text-[10px] text-rpg-text-secondary hover:text-cyan-300"
+                    title="Editar título y descripción del objetivo"
+                  >
+                    ✏️ Editar
+                  </button>
+                </div>
+                <h2 className="font-heading font-bold text-2xl leading-tight mt-0.5">{goal.title}</h2>
+                <p className="text-xs text-rpg-text-secondary mt-1 italic">“{goal.raw}”</p>
+              </div>
+            )}
             <button onClick={handleClose} className="p-2 text-rpg-text-secondary shrink-0">
               <X size={20} />
             </button>
