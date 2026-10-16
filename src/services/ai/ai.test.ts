@@ -342,3 +342,20 @@ test('parseGoalProposal: filters nombres vacíos en behaviors[]', () => {
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.phases[0].behaviors, ['X', 'Y']);
 });
+
+test('parseGoalProposal: extrae JSON si el LLM antepone texto', () => {
+  // Caso típico: "Aquí tienes la propuesta:\n\n{...}\n\n¡Espero que te sirva!"
+  const inner = { rationale: 'r', phases: [{ label: 'F1', startDay: 1, minutes: 5, behaviors: [] }] };
+  const raw = 'Aquí tienes la propuesta:\n\n' + JSON.stringify(inner) + '\n\n¡Espero que te sirva!';
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.phases.length, 1);
+});
+
+test('parseGoalProposal: extrae JSON de bloque ```json con texto antes/después', () => {
+  const inner = { rationale: 'r', phases: [{ label: 'F1', startDay: 1, minutes: 5, behaviors: ['X'] }] };
+  const raw = 'Veamos:\n```json\n' + JSON.stringify(inner, null, 2) + '\n```\nFin.';
+  const r = parseGoalProposal(raw);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.phases[0].behaviors, ['X']);
+});

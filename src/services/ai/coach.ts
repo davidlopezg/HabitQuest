@@ -377,20 +377,36 @@ export async function proposeGoalPhases(
 /** Parsea la respuesta cruda del LLM. Acepta JSON puro o envuelto en ```json```.
  *  Si no encaja con el esquema, devuelve {ok:false, text}. */
 export function parseGoalProposal(raw: string): GoalProposal {
-  // Quita fences si los hay.
-  const cleaned = raw
+  // Quita fences ```json``` si los hay.
+  let cleaned = raw
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```\s*$/, '')
     .trim();
+  // Si el LLM antepuso texto antes del JSON (ej. "Aquí tienes la propuesta:\n{...}"),
+  // nos quedamos solo con el substring desde el primer { hasta el último }.
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
+  } catch (e) {
+    // Log de diagnóstico: el JSON no parsea. Mostramos el cleaned en consola.
+    // eslint-disable-next-line no-console
+    console.warn('[parseGoalProposal] JSON parse failed:', e instanceof Error ? e.message : e, '\ncleaned:', cleaned);
     return { ok: false, text: raw };
   }
-  if (!parsed || typeof parsed !== 'object') return { ok: false, text: raw };
+  if (!parsed || typeof parsed !== 'object') {
+    // eslint-disable-next-line no-console
+    console.warn('[parseGoalProposal] parsed is not an object:', parsed);
+    return { ok: false, text: raw };
+  }
   const obj = parsed as { rationale?: unknown; phases?: unknown };
   if (!Array.isArray(obj.phases) || obj.phases.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn('[parseGoalProposal] no phases array or empty:', obj);
     return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
   }
   const phases: ProposedPhase[] = [];
@@ -409,7 +425,11 @@ export function parseGoalProposal(raw: string): GoalProposal {
       : [];
     phases.push({ label: p.label.trim(), startDay, minutes, minimal, behaviors });
   }
-  if (phases.length === 0) return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
+  if (phases.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn('[parseGoalProposal] all phases were discarded, raw:', obj);
+    return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
+  }
   // Ordena por startDay ascendente por seguridad.
   phases.sort((a, b) => a.startDay - b.startDay);
   const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
