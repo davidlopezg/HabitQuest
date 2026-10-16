@@ -25,7 +25,109 @@ import {
   ChevronUp,
   ChevronDown,
   ShieldCheck,
+  Heart,
+  ChevronDown as ChevronDownIcon,
 } from 'lucide-react';
+
+const WHY_KEY = 'habitquest_why_collapsed';
+
+const WhyPanel: React.FC = () => {
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(WHY_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WHY_KEY, collapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
+
+  return (
+    <div className="sticky top-2 z-50 mb-4 select-text">
+      <motion.div
+        layout
+        initial={false}
+        animate={{ opacity: 1 }}
+        className="rpg-card overflow-hidden border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-yellow-500/5 backdrop-blur"
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 p-3 text-left"
+          aria-expanded={!collapsed}
+          aria-label="Mi Porqué: cuando tengas una mala tentación, acuérdate de esto"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-amber-400 flex-shrink-0">
+              <Heart size={18} fill="currentColor" />
+            </span>
+            <span className="font-heading tracking-wide text-amber-300 text-sm uppercase">
+              Mi Porqué
+            </span>
+            {collapsed && (
+              <span className="text-xs text-rpg-text-secondary truncate italic">
+                · ella es mi porqué, mis hábitos son el camino
+              </span>
+            )}
+          </div>
+          <motion.span
+            animate={{ rotate: collapsed ? 0 : 180 }}
+            transition={{ duration: 0.2 }}
+            className="text-amber-300/80 flex-shrink-0"
+          >
+            <ChevronDownIcon size={18} />
+          </motion.span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.div
+              key="why-body"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <div className="px-4 pb-4 pt-1 space-y-2 text-sm leading-snug text-rpg-text-primary">
+                <p className="italic text-amber-200/90">
+                  &ldquo;Cuando venga una mala tentación, para y lee esto.&rdquo;
+                </p>
+                <ol className="space-y-1.5">
+                  <li>
+                    <span className="text-amber-400 font-bold mr-1">1.</span>
+                    Hacer mis hábitos cada día para construir la mejor vida posible.
+                  </li>
+                  <li>
+                    <span className="text-amber-400 font-bold mr-1">2.</span>
+                    Disfrutar de mi hija el máximo de tiempo posible: verla crecer, reír con ella, estar presente.
+                  </li>
+                  <li>
+                    <span className="text-amber-400 font-bold mr-1">3.</span>
+                    Darle seguridad y ayuda hoy y siempre, siendo la mejor versión de mí mismo para ella.
+                  </li>
+                  <li>
+                    <span className="text-amber-400 font-bold mr-1">4.</span>
+                    Ante cualquier mala tentación, me acuerdo de esto:{' '}
+                    <span className="text-amber-300 italic">
+                      ella es mi porqué, mis hábitos son el camino.
+                    </span>
+                  </li>
+                </ol>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+};
 import { motion, AnimatePresence } from 'motion/react';
 import CoachView from './CoachView.tsx';
 import GuideView from './GuideView.tsx';
@@ -1436,6 +1538,8 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <WhyPanel />
 
       <AnimatePresence>
         {activeTab === 'coach' && (

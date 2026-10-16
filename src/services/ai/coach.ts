@@ -288,6 +288,36 @@ REGLA CRÍTICA: la ÚLTIMA fase debe representar el OUTCOME FINAL que el usuario
 
 PISTA: si el goal.raw es vago (ej. "ser más activo", "ponerme en forma", "actividad física recurrente"), INFIERE que el outcome final es mantener el hábito de forma regular y mantenida en el tiempo. Si el goal.raw ya menciona un outcome concreto (ej. "correr 5K", "hacer 100 flexiones"), úsalo tal cual.
 
+DETECCIÓN DE HORIZONTE — elige el modo según el goal.raw:
+
+MODO A — "PLAN LARGO" (objetivo concreto con meta medible o lejano):
+- Aplica cuando goal.raw menciona una meta cuantificable o un horizonte temporal
+  ("correr 5K en 3 meses", "hablar inglés fluido", "leer 30 libros este año",
+  "adelgazar 10 kilos", "ahorrar X euros", "aprobar mi perfil de oposición").
+- 4 a 5 fases. Cada fase 14-30 días.
+- La ÚLTIMA fase = outcome final cuantificable.
+- Total típico: 2-6 meses.
+
+MODO B — "SKILL 21 DÍAS" (hábito de estilo de vida vago):
+- Aplica cuando goal.raw NO menciona una meta medible o temporal, sino un
+  comportamiento que se quiere volver automático ("actividad física regular",
+  "leer más", "dormir mejor", "meditar a diario", "ser más ordenado").
+- 3 fases de 7 días cada una = 21 días mínimo (consolidación neural + baja fricción).
+- Fases pensadas como:
+    Fase 1 (días 1-7): solo APARICIÓN del hábito, fricción mínima. Lo más
+      pequeño que el usuario pueda hacer todos los días sin fallar (1-3 min).
+      El objetivo es que el hábito se vea todos los días, no la intensidad.
+    Fase 2 (días 8-14): CONSOLIDACIÓN. Subir un poco la carga (3-8 min). Aquí
+      el usuario ya tiene la rutina montada y puede añadir algo de dificultad.
+    Fase 3 (días 15-21): AUTOMATIZACIÓN. Carga objetivo mantenible en el
+      tiempo (5-15 min). Lo que el usuario pueda seguir haciendo 6 meses sin
+      quemarse. Es el outcome: "lo hago de forma automática, sin forzarme".
+- Si después de 21 días el usuario quiere más, vuelve a generar otro plan.
+
+Si el goal.raw es borderline, prefiere MODO B (es más conservador y menos
+agresivo). La idea es siempre "el hábito se queda para toda la vida", no
+"machácate 30 días".
+
 REGLAS OBLIGATORIAS:
 - Devuelve EXCLUSIVAMENTE JSON válido con este esquema exacto (sin markdown, sin \`\`\`):
 {
@@ -303,12 +333,10 @@ REGLAS OBLIGATORIAS:
 }
 
 "durationDays" = cuántos días dura ESTA fase antes de pasar a la siguiente.
-NO calcules días desde hoy; piensa en DURACIÓN de cada fase. Ejemplo:
-  - Fase 1: 14 días (2 semanas para consolidar el hábito)
-  - Fase 2: 14 días
-  - Fase 3: 21 días (3 semanas porque la subida es mayor)
-  - Fase 4: 28 días (1 mes para mantener el outcome final)
-Típicamente 7-30 días por fase. Una fase muy corta (<7d) no da tiempo a consolidar; una muy larga (>30d) genera abandono.
+NO calcules días desde hoy; piensa en DURACIÓN de cada fase. Según el modo elegido arriba:
+- MODO A: 14-30 días por fase.
+- MODO B: 7 días por fase (todas iguales = 21 días totales).
+Una fase muy corta (<7d) no da tiempo a consolidar; una muy larga (>30d) genera abandono.
 
 EL "label" DEBE SER UNA ACCIÓN CONCRETA Y EJECUTABLE, NO UNA CATEGORÍA ABSTRACTA:
 - MAL: "Inicio suave", "Base mínima", "Construcción", "Consolidación", "Expansión", "Maduración".
