@@ -237,8 +237,8 @@ test('parseGoalProposal: JSON puro válido → ok con fases', () => {
   const raw = JSON.stringify({
     rationale: 'Empezar suave y subir.',
     phases: [
-      { label: 'Fase 1 — Arrancar', startDay: 1, minutes: 5, behaviors: ['Caminar'] },
-      { label: 'Fase 2 — Subir', startDay: 8, minutes: 15, behaviors: ['Caminar'] },
+      { label: 'Fase 1 — Arrancar', durationDays: 14, minutes: 5, behaviors: ['Caminar'] },
+      { label: 'Fase 2 — Subir', durationDays: 14, minutes: 15, behaviors: ['Caminar'] },
     ],
   });
   const r = parseGoalProposal(raw);
@@ -248,13 +248,14 @@ test('parseGoalProposal: JSON puro válido → ok con fases', () => {
     assert.equal(r.phases[0].minutes, 5);
     assert.equal(r.phases[0].minimal, 3, 'default minimal = ceil(minutes/2)');
     assert.deepEqual(r.phases[0].behaviors, ['Caminar']);
-    assert.equal(r.phases[1].startDay, 8);
+    assert.equal(r.phases[0].durationDays, 14);
+    assert.equal(r.phases[1].startDay, 15, 'startDay cumulativo: fase1 (14d) + 1');
   }
 });
 
 test('parseGoalProposal: minimal explícito se respeta si está dentro de rango', () => {
   const raw = JSON.stringify({
-    phases: [{ label: 'F', startDay: 1, minutes: 20, minimal: 5, behaviors: [] }],
+    phases: [{ label: 'F', durationDays: 14, minutes: 20, minimal: 5, behaviors: [] }],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
@@ -263,7 +264,7 @@ test('parseGoalProposal: minimal explícito se respeta si está dentro de rango'
 
 test('parseGoalProposal: minimal inválido (>minutes) cae al default', () => {
   const raw = JSON.stringify({
-    phases: [{ label: 'F', startDay: 1, minutes: 5, minimal: 50, behaviors: [] }],
+    phases: [{ label: 'F', durationDays: 7, minutes: 5, minimal: 50, behaviors: [] }],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
@@ -271,7 +272,7 @@ test('parseGoalProposal: minimal inválido (>minutes) cae al default', () => {
 });
 
 test('parseGoalProposal: acepta JSON envuelto en ```json```', () => {
-  const raw = '```json\n{"rationale":"x","phases":[{"label":"F1","startDay":1,"minutes":5,"behaviors":["A"]}]}\n```';
+  const raw = '```json\n{"rationale":"x","phases":[{"label":"F1","durationDays":7,"minutes":5,"behaviors":["A"]}]}\n```';
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.phases[0].behaviors, ['A']);
@@ -290,14 +291,21 @@ test('parseGoalProposal: fases vacías → ok=false', () => {
 
 test('parseGoalProposal: fase sin minutes → ok=false', () => {
   const r = parseGoalProposal(JSON.stringify({
-    phases: [{ label: 'F', startDay: 1, behaviors: ['X'] }],
+    phases: [{ label: 'F', durationDays: 7, behaviors: ['X'] }],
+  }));
+  assert.equal(r.ok, false);
+});
+
+test('parseGoalProposal: fase sin durationDays → ok=false', () => {
+  const r = parseGoalProposal(JSON.stringify({
+    phases: [{ label: 'F', minutes: 5, behaviors: ['X'] }],
   }));
   assert.equal(r.ok, false);
 });
 
 test('parseGoalProposal: behaviors vacío es válido (significa "todos")', () => {
   const raw = JSON.stringify({
-    phases: [{ label: 'F', startDay: 1, minutes: 5, behaviors: [] }],
+    phases: [{ label: 'F', durationDays: 7, minutes: 5, behaviors: [] }],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
@@ -307,8 +315,8 @@ test('parseGoalProposal: behaviors vacío es válido (significa "todos")', () =>
 test('parseGoalProposal: descarta entradas con label no-string', () => {
   const raw = JSON.stringify({
     phases: [
-      { label: 123, startDay: 1, minutes: 5, behaviors: [] },
-      { label: 'Válida', startDay: 1, minutes: 5, behaviors: [] },
+      { label: 123, durationDays: 7, minutes: 5, behaviors: [] },
+      { label: 'Válida', durationDays: 7, minutes: 5, behaviors: [] },
     ],
   });
   const r = parseGoalProposal(raw);
@@ -319,24 +327,26 @@ test('parseGoalProposal: descarta entradas con label no-string', () => {
   }
 });
 
-test('parseGoalProposal: ordena fases por startDay ascendente', () => {
+test('parseGoalProposal: calcula startDay cumulativo desde durationDays', () => {
   const raw = JSON.stringify({
     phases: [
-      { label: 'Tarde', startDay: 30, minutes: 30, behaviors: [] },
-      { label: 'Temprano', startDay: 1, minutes: 5, behaviors: [] },
+      { label: 'A', durationDays: 7, minutes: 5, behaviors: [] },
+      { label: 'B', durationDays: 14, minutes: 10, behaviors: [] },
+      { label: 'C', durationDays: 21, minutes: 15, behaviors: [] },
     ],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
   if (r.ok) {
-    assert.equal(r.phases[0].label, 'Temprano');
-    assert.equal(r.phases[1].label, 'Tarde');
+    assert.equal(r.phases[0].startDay, 1);
+    assert.equal(r.phases[1].startDay, 8);
+    assert.equal(r.phases[2].startDay, 22);
   }
 });
 
 test('parseGoalProposal: filters nombres vacíos en behaviors[]', () => {
   const raw = JSON.stringify({
-    phases: [{ label: 'F', startDay: 1, minutes: 5, behaviors: ['X', '', '   ', 'Y'] }],
+    phases: [{ label: 'F', durationDays: 7, minutes: 5, behaviors: ['X', '', '   ', 'Y'] }],
   });
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
@@ -344,8 +354,7 @@ test('parseGoalProposal: filters nombres vacíos en behaviors[]', () => {
 });
 
 test('parseGoalProposal: extrae JSON si el LLM antepone texto', () => {
-  // Caso típico: "Aquí tienes la propuesta:\n\n{...}\n\n¡Espero que te sirva!"
-  const inner = { rationale: 'r', phases: [{ label: 'F1', startDay: 1, minutes: 5, behaviors: [] }] };
+  const inner = { rationale: 'r', phases: [{ label: 'F1', durationDays: 7, minutes: 5, behaviors: [] }] };
   const raw = 'Aquí tienes la propuesta:\n\n' + JSON.stringify(inner) + '\n\n¡Espero que te sirva!';
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);
@@ -353,7 +362,7 @@ test('parseGoalProposal: extrae JSON si el LLM antepone texto', () => {
 });
 
 test('parseGoalProposal: extrae JSON de bloque ```json con texto antes/después', () => {
-  const inner = { rationale: 'r', phases: [{ label: 'F1', startDay: 1, minutes: 5, behaviors: ['X'] }] };
+  const inner = { rationale: 'r', phases: [{ label: 'F1', durationDays: 7, minutes: 5, behaviors: ['X'] }] };
   const raw = 'Veamos:\n```json\n' + JSON.stringify(inner, null, 2) + '\n```\nFin.';
   const r = parseGoalProposal(raw);
   assert.equal(r.ok, true);

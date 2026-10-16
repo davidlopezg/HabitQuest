@@ -260,8 +260,11 @@ export async function chatWithCoach(
 export interface ProposedPhase {
   /** Etiqueta corta: "Fase 1 — Arrancar", "Fase 2 — Subir volumen"… */
   label: string;
-  /** Días desde hoy en los que empieza esta fase (1 = mañana). */
-  startDay: number;
+  /** Cuántos días dura ESTA fase antes de pasar a la siguiente. */
+  durationDays: number;
+  /** Día (1-based) en que empieza esta fase, calculado cumulativamente.
+   *  Lo rellena parseGoalProposal; el LLM no lo aporta. */
+  startDay?: number;
   /** Duración objetivo en minutos para ESTA fase. */
   minutes: number;
   /** Versión mínima (mantenimiento) en minutos. Opcional: si no viene,
@@ -292,12 +295,20 @@ REGLAS OBLIGATORIAS:
   "phases": [
     {
       "label": "Fase N — <ACCIÓN CONCRETA ejecutable>",
-      "startDay": 1,
+      "durationDays": 14,
       "minutes": 5,
       "behaviors": ["<nombre exacto de un behavior existente>"]
     }
   ]
 }
+
+"durationDays" = cuántos días dura ESTA fase antes de pasar a la siguiente.
+NO calcules días desde hoy; piensa en DURACIÓN de cada fase. Ejemplo:
+  - Fase 1: 14 días (2 semanas para consolidar el hábito)
+  - Fase 2: 14 días
+  - Fase 3: 21 días (3 semanas porque la subida es mayor)
+  - Fase 4: 28 días (1 mes para mantener el outcome final)
+Típicamente 7-30 días por fase. Una fase muy corta (<7d) no da tiempo a consolidar; una muy larga (>30d) genera abandono.
 
 EL "label" DEBE SER UNA ACCIÓN CONCRETA Y EJECUTABLE, NO UNA CATEGORÍA ABSTRACTA:
 - MAL: "Inicio suave", "Base mínima", "Construcción", "Consolidación", "Expansión", "Maduración".
@@ -420,9 +431,10 @@ export function parseGoalProposal(raw: string): GoalProposal {
   const phases: ProposedPhase[] = [];
   for (const rawPhase of obj.phases) {
     if (!rawPhase || typeof rawPhase !== 'object') continue;
-    const p = rawPhase as { label?: unknown; startDay?: unknown; minutes?: unknown; minimal?: unknown; behaviors?: unknown };
+    const p = rawPhase as { label?: unknown; durationDays?: unknown; minutes?: unknown; minimal?: unknown; behaviors?: unknown };
     if (typeof p.label !== 'string') continue;
-    const startDay = typeof p.startDay === 'number' && p.startDay >= 1 ? Math.floor(p.startDay) : 1;
+    const durationDays = typeof p.durationDays === 'number' && p.durationDays > 0 ? Math.floor(p.durationDays) : null;
+    if (durationDays === null) continue; // sin duración no podemos planificar la fase
     const minutes = typeof p.minutes === 'number' && p.minutes > 0 ? Math.floor(p.minutes) : null;
     if (minutes === null) continue; // sin minutos no podemos construir la fase
     const minimal = typeof p.minimal === 'number' && p.minimal > 0 && p.minimal <= minutes
@@ -431,15 +443,20 @@ export function parseGoalProposal(raw: string): GoalProposal {
     const behaviors = Array.isArray(p.behaviors)
       ? p.behaviors.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
       : [];
-    phases.push({ label: p.label.trim(), startDay, minutes, minimal, behaviors });
+    phases.push({ label: p.label.trim(), durationDays, minutes, minimal, behaviors });
   }
   if (phases.length === 0) {
     // eslint-disable-next-line no-console
     console.warn('[parseGoalProposal] all phases were discarded, raw:', obj);
     return { ok: false, text: typeof obj.rationale === 'string' ? obj.rationale : raw };
   }
-  // Ordena por startDay ascendente por seguridad.
-  phases.sort((a, b) => a.startDay - b.startDay);
+  // Calcula startDay cumulativo a partir de durationDays para que la UI
+  // pueda mostrar cuándo empieza cada fase.
+  let cumDays = 1;
+  for (const ph of phases) {
+    ph.startDay = cumDays;
+    cumDays += ph.durationDays;
+  }
   const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
   return { ok: true, phases, rationale };
 }

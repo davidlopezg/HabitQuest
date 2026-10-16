@@ -2096,8 +2096,13 @@ function GoalDetailOverlay({
           level: idx + 1,
           minutes: phase.minutes,
           minimal: phase.minimal ?? Math.max(1, Math.ceil(phase.minutes / 2)),
-          need: 5,
-          window: 7,
+          // need = cuántos éxitos dentro de esta fase antes de subir de nivel.
+          // Como cada fase dura durationDays días, el "need" es
+          // cuántos de esos días hay que cumplir para consolidar.
+          // Usamos durationDays directamente (asume 1 sesión/día) y la window
+          // como la misma duración para que el motor mida dentro de la fase.
+          need: phase.durationDays,
+          window: phase.durationDays,
           label: phase.label,
         };
       }).filter((l): l is NonNullable<typeof l> => l !== null);
@@ -2693,7 +2698,9 @@ function GoalDetailOverlay({
                       <div key={idx} className="rpg-card p-3 space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <h4 className="font-heading font-bold text-sm">{phase.label}</h4>
-                          <span className="text-[10px] text-rpg-text-secondary shrink-0">día {phase.startDay}</span>
+                          <span className="text-[10px] text-rpg-text-secondary shrink-0">
+                            {phase.durationDays} día{phase.durationDays === 1 ? '' : 's'}
+                          </span>
                         </div>
                         <div className="text-xs">
                           <span className="text-cyan-300 font-bold">{phase.minutes} min</span>
