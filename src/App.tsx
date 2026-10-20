@@ -147,6 +147,7 @@ import {
   downloadFullBackup,
   shouldShowReminder,
   idbGet,
+  idbSet,
   getOnboardingDismissed,
 } from './services/persistence.ts';
 
@@ -197,7 +198,7 @@ interface DailyChallenge {
 
 // --- Constants ---
 const LEVEL_XP = 100;
-const APP_VERSION = 'v1.0.119  ·  34f583d  ·  2026-09-19 10:22 UTC';
+const APP_VERSION = 'v1.0.140  ·  0f66e92  ·  2026-10-19 19:45 UTC';
 
 const HABIT_GROUPS = [
   { id: 'morning', name: 'MAÑANA', icon: '🌅', color: 'text-yellow-400' },
@@ -289,19 +290,8 @@ const COMBO_WINDOW = 30000; // 30 seconds
 const COMBO_MIN = 3;
 const COMBO_BONUS = 0.5;
 
-/** Estado inicial del modo manual: LS > INITIAL_HABITS.
- *  Importante: NO escribir a LS/IDB hasta haber intentado IDB (si no,
- *  el primer save borraría los datos que solo viven en IDB). */
-function loadInitialUserData(): UserData {
-  try {
-    const saved = localStorage.getItem(NS.MANUAL);
-    if (saved) {
-      const parsed = JSON.parse(saved) as UserData;
-      if (Array.isArray(parsed?.habits)) return parsed;
-    }
-  } catch {
-    /* fallthrough */
-  }
+/** UserData por defecto (fresh). Pura, sin I/O. */
+function freshUserData(): UserData {
   return {
     name: 'Aventurero',
     avatar: '🦸',
@@ -316,6 +306,22 @@ function loadInitialUserData(): UserData {
     lastGroupActivity: {},
     dailyChallenges: [],
   };
+}
+
+/** Estado inicial del modo manual: LS > INITIAL_HABITS.
+ *  Importante: NO escribir a LS/IDB hasta haber intentado IDB (si no,
+ *  el primer save borraría los datos que solo viven en IDB). */
+function loadInitialUserData(): UserData {
+  try {
+    const saved = localStorage.getItem(NS.MANUAL);
+    if (saved) {
+      const parsed = JSON.parse(saved) as UserData;
+      if (Array.isArray(parsed?.habits)) return parsed;
+    }
+  } catch {
+    /* fallthrough */
+  }
+  return freshUserData();
 }
 
 export default function App() {
@@ -385,9 +391,9 @@ export default function App() {
   // Mensaje diario de motivación (modal antes de entrar a la app).
   const motivation = useDailyMotivation();
 
-  // Hidratación async: solo si el inicializador vio LS=default. En ese caso
-  // vamos a IDB para ver si tiene algo mejor antes de declarar hydration.
-  // Si el inicializador ya marcó hydrated=true, este effect no hace nada.
+  // Hidratación async: si LS parece INITIAL_HABITS sin progreso (probable
+  // residuo o LS evict), vamos a IDB para ver si tiene algo mejor. Adopta
+  // IDB si tiene más hábitos o si LS está vacío.
   useEffect(() => {
     if (hydrated) return;
     let cancelled = false;
@@ -396,11 +402,22 @@ export default function App() {
         const lsRaw = (() => { try { return localStorage.getItem(NS.MANUAL); } catch { return null; } })();
         const lsData = lsRaw ? (JSON.parse(lsRaw) as UserData) : null;
         const lsCount = Array.isArray(lsData?.habits) ? lsData!.habits.length : 0;
+        const lsHasProgress = lsData?.habits?.some((h) => h.completedDates?.length > 0) ?? false;
         const idbValue = await idbGet<UserData>(NS.MANUAL);
         if (cancelled) return;
-        if (idbValue && Array.isArray(idbValue.habits) && idbValue.habits.length > lsCount) {
+        // Adoptar IDB si LS está vacío O si LS parece INITIAL_HABITS sin progreso
+        // e IDB tiene más hábitos. (Cubre el caso del bug "cada día se borra todo":
+        // LS evictado pero IDB persiste con los hábitos personalizados.)
+        const lsIsEmpty = !lsRaw || lsCount === 0;
+        const lsIsDefault = lsCount <= INITIAL_HABITS.length && !lsHasProgress;
+        const idbIsBetter = idbValue && Array.isArray(idbValue.habits) && idbValue.habits.length > lsCount;
+        if ((lsIsEmpty && idbValue && idbValue.habits?.length > 0) || (lsIsDefault && idbIsBetter)) {
           setUserData(idbValue);
           try { localStorage.setItem(NS.MANUAL, JSON.stringify(idbValue)); } catch { /* ignore */ }
+        } else if (!lsRaw && !idbValue) {
+          // Cold start genuino: sembrar IDB con INITIAL_HABITS para tener un respaldo
+          // desde el principio (sobrevive a futuras evictions de LS).
+          try { await idbSet(NS.MANUAL, freshUserData()); } catch { /* ignore */ }
         }
       } catch {
         /* ignore */

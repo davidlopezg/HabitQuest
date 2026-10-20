@@ -14,7 +14,7 @@
 
 import { idbGet, idbSet, idbDel } from './idb.ts';
 
-export { idbGet };
+export { idbGet, idbSet };
 
 // --- Namespaces ----------------------------------------------------------------
 // Cada namespace tiene su propio par de claves LS + IDB. Así el modo manual y el
