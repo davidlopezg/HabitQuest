@@ -218,3 +218,86 @@ test('flujo D: LS=20 (borró hábitos personalizados, sin progreso) + IDB=20 →
   const idbCount = 20;
   assert.equal(idbCount > 20, false);
 });
+// ── Debounce de IDB y flush al cerrar ──────────────────────────────────────
+// Réplica del contrato de savePrimary() para poder testearlo sin DOM ni
+// IndexedDB reales: si el usuario cierra la PWA antes de que pase el debounce,
+// la escritura se pierde en el espejo de IDB y una posterior eviction de LS
+// devuelve un estado viejo (el usuario ve solo los hábitos predeterminados).
+
+const DEBOUNCE_MS = 800;
+const idbStore = new Map<string, unknown>();
+const idbWrites: string[] = [];
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function fakeSavePrimary(namespace: string, data: unknown): void {
+  const existing = timers.get(namespace);
+  if (existing) clearTimeout(existing);
+  timers.set(
+    namespace,
+    setTimeout(() => {
+      timers.delete(namespace);
+      idbWrites.push(namespace);
+      idbStore.set(namespace, data);
+    }, DEBOUNCE_MS),
+  );
+}
+
+function fakeFlush(): void {
+  for (const [ns, t] of timers) {
+    clearTimeout(t);
+    timers.delete(ns);
+    idbWrites.push(ns);
+    idbStore.set(ns, ns + ':flushed');
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+test('flush: el cambio hecho justo antes de cerrar SÍ llega a IDB', async () => {
+  idbWrites.length = 0;
+  // Guardamos y "cerramos" la app de inmediato, sin esperar el debounce.
+  fakeSavePrimary('ns1', { habits: ['mío'] });
+  assert.deepEqual(idbWrites, [], 'sanity: aún no debe haberse escrito');
+  fakeFlush();
+  assert.deepEqual(idbWrites, ['ns1'], 'el flush debe forzar la escritura pendiente');
+});
+
+test('flush: sin flush, el cambio reciente se pierde (el bug original)', async () => {
+  idbWrites.length = 0;
+  fakeSavePrimary('ns2', { habits: ['mío'] });
+  await sleep(DEBOUNCE_MS + 100); // el debounce normal sí llega a completarse
+  assert.deepEqual(idbWrites, ['ns2']);
+});
+
+test('flush: es idempotente (llamarlo dos veces no rompe nada)', async () => {
+  idbWrites.length = 0;
+  fakeSavePrimary('ns3', { habits: ['x'] });
+  fakeFlush();
+  fakeFlush();
+  assert.deepEqual(idbWrites, ['ns3'], 'solo debe escribir una vez');
+});
+
+test('flush: varias escrituras del mismo namespace colapsan en la última', async () => {
+  idbWrites.length = 0;
+  fakeSavePrimary('ns4', { habits: ['v1'] });
+  fakeSavePrimary('ns4', { habits: ['v2'] });
+  fakeSavePrimary('ns4', { habits: ['v3-final'] });
+  fakeFlush();
+  assert.deepEqual(idbWrites, ['ns4'], 'no debe escribir 3 veces');
+  assert.equal(idbStore.get('ns4'), 'ns4:flushed');
+});
+
+test('clearPrimary: cancela el debounce en vuelo para no resucitar lo borrado', () => {
+  idbWrites.length = 0;
+  fakeSavePrimary('ns5', { habits: ['borrado'] });
+  // El usuario pulsa "borrar": hay una escritura pendiente que escribiría
+  // en IDB el estado que acaba de eliminar.
+  const t = timers.get('ns5');
+  if (t) clearTimeout(t);
+  timers.delete('ns5');
+  idbStore.delete('ns5');
+  fakeFlush(); // un flush posterior ya no debe resurrectar nada
+  assert.deepEqual(idbWrites, [], 'nada debe escribirse tras el borrado');
+});

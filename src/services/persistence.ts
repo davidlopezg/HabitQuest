@@ -92,7 +92,16 @@ export async function loadPrimary<T>(namespace: string): Promise<T | null> {
  * con localStorage; IDB es fire-and-forget.
  */
 const pendingIdbWrites = new Map<string, ReturnType<typeof setTimeout>>();
+/** Último payload pendiente de escribir a IDB por namespace. Necesario para
+ *  poder vaciar el debounce al cerrar la app (flush) o al borrar (cancel). */
+const pendingIdbData = new Map<string, unknown>();
 const IDB_DEBOUNCE_MS = 800;
+
+function writeIdbNow(namespace: string, data: unknown): void {
+  pendingIdbWrites.delete(namespace);
+  pendingIdbData.delete(namespace);
+  void idbSet(namespace, data);
+}
 
 export function savePrimary(namespace: string, data: unknown): void {
   const json = JSON.stringify(data);
@@ -105,15 +114,37 @@ export function savePrimary(namespace: string, data: unknown): void {
   // IDB: debounced. Si hay otra en vuelo para el mismo namespace, la reemplazamos.
   const existing = pendingIdbWrites.get(namespace);
   if (existing) clearTimeout(existing);
-  const t = setTimeout(() => {
-    pendingIdbWrites.delete(namespace);
-    void idbSet(namespace, data);
-  }, IDB_DEBOUNCE_MS);
+  pendingIdbData.set(namespace, data);
+  const t = setTimeout(() => writeIdbNow(namespace, data), IDB_DEBOUNCE_MS);
   pendingIdbWrites.set(namespace, t);
+}
+
+/**
+ * Vuelca a IDB cualquier escritura pendiente del debounce.
+ *
+ * Sin esto, un cambio hecho <800ms antes de cerrar la PWA se queda solo en
+ * localStorage. Si el navegador luego evicciona LS (presión de cuota, iOS
+ * limpiando almacenamiento tras semanas sin abrir la app), IDB devuelve un
+ * estado viejo y el usuario aparece con los hábitos predeterminados.
+ *
+ * Idempotente y sin excepciones: se puede llamar en cualquier momento.
+ */
+export function flushPendingWrites(): void {
+  for (const [namespace, data] of pendingIdbData) {
+    const t = pendingIdbWrites.get(namespace);
+    if (t) clearTimeout(t);
+    writeIdbNow(namespace, data);
+  }
 }
 
 /** Borra de AMBAS capas. Útil para "Reiniciar" del usuario. */
 export function clearPrimary(namespace: string): void {
+  // Cancelamos cualquier escritura pendiente: si no, un debounce en vuelo
+  // reescribiría en IDB el estado que el usuario acaba de borrar.
+  const t = pendingIdbWrites.get(namespace);
+  if (t) clearTimeout(t);
+  pendingIdbWrites.delete(namespace);
+  pendingIdbData.delete(namespace);
   try {
     localStorage.removeItem(namespace);
   } catch {

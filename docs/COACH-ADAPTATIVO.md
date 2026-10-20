@@ -182,10 +182,10 @@ a 10 min.
 | Fase | Alcance | Estado |
 |---|---|---|
 | 0 | Motor determinista + tests (21) | ✅ hecho y verificado |
-| 1 | Chat/IA con MiniMax (`src/services/ai/`) + insights | ✅ hecho (Fase 3) |
+| 1 | Chat/IA con MiniMax (`src/services/ai/`) + insights | ✅ hecho |
 | 2 | UI: onboarding objetivo + check-in + plan en Home | ✅ hecho (Fase 2) |
-| 3 | Flujo "No puedo" + replanificación en UI | pendiente |
-| 4 | Patrones/insights + "¿Qué has aprendido de mí?" | pendiente |
+| 3 | Flujo "No puedo" + replanificación en UI | ✅ hecho (botón NO PUEDO → modal con motivos rápidos → `handleCannot`; también vía chat) |
+| 4 | Patrones/insights + "¿Qué has aprendido de mí?" | ✅ hecho (`analyzePatterns` + tarjeta del día + overlay Insights) |
 | 5 | Notificaciones contextuales (SW + Notification API, aviso por hábito) | ✅ hecho |
 | 6 | Migración v1→v2 (suma XP/historia) + misiones manuales dentro del día del coach | ✅ hecho |
 | 6b | Hasta 3 objetivos por fases (selector, añadir, plan unificado con etiquetas) | ✅ hecho |
