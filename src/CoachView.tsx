@@ -282,6 +282,11 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   // Hidratación: si LS ya tiene goals, marcamos hydrated al toque. Solo vamos
   // a IDB si LS parece vacío (goals=[]). Esto evita el flash de emptyState
   // y cualquier clic perdido durante la ventana async.
+  /* Fin de la ventana en la que aún podrían aparecer objetivos de sesiones
+     anteriores: el pull desde Supabase ya respondió (o falló/fue timeout).
+     Mientras sea false, no decidimos la fase, para no enseñar el onboarding
+     a un usuario que sí tiene objetivos. */
+  const [remoteResolved, setRemoteResolved] = useState(false);
   const [hydrated, setHydrated] = useState<boolean>(() => {
     try {
       const lsRaw = localStorage.getItem(STORAGE_KEY);
@@ -334,24 +339,39 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     let cancelled = false;
     void (async () => {
       const remote = await fetchRemoteState();
-      if (cancelled || !remote?.state) return;
-      try {
-        const rs = remote.state as Partial<CoachState>;
-        if (Array.isArray(rs.goals) && rs.goals.length > 0 && cs.goals.length === 0) {
-          // Adoptamos remoto.
-          setCs((prev) => {
-            const merged = { ...prev, ...(rs as CoachState) };
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
-            return merged;
-          });
+      if (cancelled) return;
+      if (remote?.state) {
+        try {
+          const rs = remote.state as Partial<CoachState>;
+          if (Array.isArray(rs.goals) && rs.goals.length > 0 && cs.goals.length === 0) {
+            // Adoptamos remoto.
+            setCs((prev) => {
+              const merged = { ...prev, ...(rs as CoachState) };
+              try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+              return merged;
+            });
+          }
+        } catch {
+          /* ignore malformed */
         }
-      } catch {
-        /* ignore malformed */
       }
+      // Damos por resuelta la fuente remota pase lo que pase: si tardamos o
+      // fallamos, no tiene sentido seguir bloqueando la UI. Marca el final de
+      // la ventana en la que aún podrían aparecer objetivos.
+      if (!cancelled) setRemoteResolved(true);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
+
+  // Red de seguridad: si el fetch remoto se queda colgado, soltamos la UI
+  // igualmente. Antes preferimos esperar un instante a mostrar el onboarding
+  // a alguien que tiene objetivos.
+  useEffect(() => {
+    if (!hydrated || remoteResolved) return;
+    const t = setTimeout(() => setRemoteResolved(true), 4000);
+    return () => clearTimeout(t);
+  }, [hydrated, remoteResolved]);
 
   useEffect(() => {
     if (!notice) return;
@@ -384,8 +404,20 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     !insightDismissed && !!insightCard && insightSeenDate !== today && cs.logs.length >= 5;
 
 
-  const phase: 'onboarding' | 'checkin' | 'plan' =
-    activeGoals.length === 0 ? 'onboarding' : !checkinToday ? 'checkin' : 'plan';
+  // Fase visible. Importante: hasta que hidratamos, `cs` puede estar vacío
+  // aunque el usuario tenga objetivos (localStorage evictado, arranque en frío,
+  // o estado que aún viene de IndexedDB/Supabase). Si midiéramos sobre ese
+  // estado vacío, mostraríamos el onboarding "¿Qué quieres conseguir?" un
+  // instante y luego saltaríamos al plan: el panel aparecía "cada mañana" sin
+  // que el usuario hubiera perdido nada. No mostramos ninguna fase hasta
+  // tener la respuesta real.
+  const phase: 'loading' | 'onboarding' | 'checkin' | 'plan' = !hydrated || !remoteResolved
+    ? 'loading'
+    : activeGoals.length === 0
+      ? 'onboarding'
+      : !checkinToday
+        ? 'checkin'
+        : 'plan';
 
   const xp = cs.counters.xp ?? 0;
   const coachLevel = Math.floor(xp / 100) + 1;
@@ -767,6 +799,15 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   const orderedGoals = [...activeGoals].sort((a, b) => goalHourOf(a.id) - goalHourOf(b.id));
 
   // ---------- render por fase ----------
+
+  // Hidratando: no pintamos nada para no decidir la fase sobre un estado vacío.
+  if (phase === 'loading') {
+    return (
+      <div className="flex-1 flex items-center justify-center py-20">
+        <div className="w-6 h-6 rounded-full border-2 border-white/20 border-t-cyan-400 animate-spin" />
+      </div>
+    );
+  }
 
   if (phase === 'onboarding') {
     return (
