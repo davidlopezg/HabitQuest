@@ -148,6 +148,16 @@ export interface BehaviorLogEntry {
   plannedMinutes: number; // objetivo planificado ese día
 }
 
+/**
+ * Comentario libre de un día ("qué pasó hoy").
+ * Una nota por fecha; se edita y se sobrescribe.
+ */
+export interface DayNote {
+  date: string; // YYYY-MM-DD
+  text: string;
+  updatedAt: string; // ISO
+}
+
 export type PlanPriority = 'essential' | 'important' | 'optional';
 export type PlanItemStatus =
   | 'pending'
@@ -219,6 +229,7 @@ export interface CoachState {
   logs: BehaviorLogEntry[];
   checkins: DayCheckIn[];
   plans: Record<string, DayPlan>; // por fecha
+  notes: DayNote[]; // comentario del día (uno por fecha)
   counters: CoachCounters;
   memory: UserMemory;
   chat: ChatMessage[]; // conversación ACTIVA con el coach (en curso)

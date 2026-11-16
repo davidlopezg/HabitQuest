@@ -28,7 +28,7 @@ import { recommendLevel } from './progression.ts';
 import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
-import { adherence, streakDays } from './history.ts';
+import { adherence, streakDays, daySummary, noteOn, upsertNote, NOTE_MAX_LENGTH } from './history.ts';
 import {
   applyDecomposed,
   emptyState,
@@ -48,7 +48,7 @@ import {
   extractFactsFromConversation,
   summarizeFacts,
 } from './index.ts';
-import type { Conversation } from './types.ts';
+import type { Conversation, Goal } from './types.ts';
 
 // ---------- helpers ----------
 
@@ -1190,4 +1190,103 @@ test('summarizeFacts: vacío → string vacío; con hechos → bloque formateado
   assert.ok(out.includes('Lo que el coach retiene'), 'cabecera visible para el LLM');
   assert.ok(out.includes('Familia') || out.includes('Trabajo'), 'categorías presentes');
   assert.match(out, /•/, 'formato con viñetas');
+});
+
+// ---------- 11. Bitácora: resumen del día y comentarios ----------
+
+function bitacoraFixture() {
+  const goal: Goal = {
+    id: 'g1',
+    raw: 'Quiero leer más',
+    title: 'Leer más',
+    area: 'learning',
+    createdAt: '2025-06-01',
+    status: 'active',
+    pipeline: [],
+  };
+  const behaviors = [
+    beh('b1', 'g1', 'read', 1, '2025-06-01'),
+    beh('b2', 'g1', 'walk', 1, '2025-06-01'),
+  ];
+  const logs: BehaviorLogEntry[] = [
+    { date: '2025-06-10', behaviorId: 'b1', kind: 'full', minutes: 10, dayMode: 'normal', plannedMinutes: 10 },
+    { date: '2025-06-10', behaviorId: 'b2', kind: 'excused', minutes: 0, dayMode: 'recovery', plannedMinutes: 20, reasonCode: 'illness' },
+    { date: '2025-06-11', behaviorId: 'b1', kind: 'minimal', minutes: 3, dayMode: 'minimal', plannedMinutes: 10 },
+    { date: '2025-06-11', behaviorId: 'b2', kind: 'miss', minutes: 0, dayMode: 'normal', plannedMinutes: 20 },
+  ];
+  return { goal, behaviors, logs };
+}
+
+test('daySummary: resume solo el día pedido (hechos / pendientes por tipo)', () => {
+  const { goal, behaviors, logs } = bitacoraFixture();
+  const s = daySummary(logs, behaviors, [goal], '2025-06-10');
+  assert.equal(s.date, '2025-06-10');
+  assert.equal(s.total, 2, 'solo los registros de ese día');
+  assert.equal(s.done, 1, 'full cuenta como hecho; excused no');
+  const excused = s.items.find((i) => i.behaviorId === 'b2')!;
+  assert.equal(excused.kind, 'excused');
+  assert.equal(excused.reasonCode, 'illness');
+  assert.equal(excused.goalId, 'g1');
+});
+
+test('daySummary: el progreso del objetivo se deriva de sus hábitos (x/y)', () => {
+  const { goal, behaviors, logs } = bitacoraFixture();
+  const s = daySummary(logs, behaviors, [goal], '2025-06-11');
+  assert.equal(s.goals.length, 1);
+  assert.equal(s.goals[0].goalId, 'g1');
+  assert.equal(s.goals[0].done, 1); // minimal cuenta como hecho
+  assert.equal(s.goals[0].total, 2);
+});
+
+test('daySummary: un día sin registros no inventa datos', () => {
+  const { goal, behaviors, logs } = bitacoraFixture();
+  const s = daySummary(logs, behaviors, [goal], '2025-06-12');
+  assert.equal(s.total, 0);
+  assert.equal(s.done, 0);
+  assert.equal(s.goals.length, 0);
+  assert.equal(s.items.length, 0);
+});
+
+test('daySummary: un hábito borrado no rompe el resumen', () => {
+  const { goal, logs } = bitacoraFixture();
+  const s = daySummary(logs, [], [goal], '2025-06-10');
+  assert.equal(s.total, 2, 'los registros siguen ahí');
+  assert.equal(s.goals.length, 0, 'sin hábitos no hay objetivo que contabilizar');
+  assert.ok(s.items.every((i) => i.name.length > 0), 'nombre por defecto para el hábito ausente');
+});
+
+test('daySummary: si el mismo hábito se registra dos veces, cuenta el último', () => {
+  const { goal, behaviors, logs } = bitacoraFixture();
+  const dup = [
+    ...logs,
+    { date: '2025-06-10', behaviorId: 'b1', kind: 'minimal' as const, minutes: 3, dayMode: 'minimal' as const, plannedMinutes: 10 },
+  ];
+  const s = daySummary(dup, behaviors, [goal], '2025-06-10');
+  assert.equal(s.total, 2, 'un hábito = un estado por día');
+  assert.equal(s.items.filter((i) => i.behaviorId === 'b1').length, 1);
+  assert.equal(s.items.find((i) => i.behaviorId === 'b1')?.kind, 'minimal', 'gana el último registro');
+});
+
+test('upsertNote: crea, sobrescribe (no duplica) y borra con texto vacío', () => {
+  let notes = upsertNote([], '2025-06-10', 'Me dolía la rodilla', '2025-06-10T20:00:00Z');
+  assert.equal(notes.length, 1);
+  assert.equal(noteOn(notes, '2025-06-10')?.text, 'Me dolía la rodilla');
+
+  notes = upsertNote(notes, '2025-06-10', 'Al final caminé 10 min', '2025-06-10T21:00:00Z');
+  assert.equal(notes.length, 1, 'sobrescribe: una nota por fecha');
+  assert.equal(noteOn(notes, '2025-06-10')?.text, 'Al final caminé 10 min');
+
+  notes = upsertNote(notes, '2025-06-10', '   ', '2025-06-10T22:00:00Z');
+  assert.equal(notes.length, 0, 'texto vacío borra la nota');
+  assert.equal(noteOn(notes, '2025-06-10'), undefined);
+});
+
+test('upsertNote: no toca las notas de otros días y recorta al tope', () => {
+  let notes = upsertNote([], '2025-06-10', 'día 10', '2025-06-10T20:00:00Z');
+  notes = upsertNote(notes, '2025-06-11', 'día 11', '2025-06-11T20:00:00Z');
+  assert.equal(notes.length, 2);
+  assert.equal(noteOn(notes, '2025-06-10')?.text, 'día 10');
+
+  const long = upsertNote([], '2025-06-12', 'x'.repeat(NOTE_MAX_LENGTH + 50), '2025-06-12T20:00:00Z');
+  assert.equal(long[0].text.length, NOTE_MAX_LENGTH);
 });
