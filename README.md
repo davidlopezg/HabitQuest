@@ -171,6 +171,27 @@ Sin esas variables la app sigue funcionando con localStorage — no rompe nada. 
 
 ---
 
+## 💾 Copias de seguridad (persistencia multi-capa)
+
+El estado vive en **dos capas locales**: `localStorage` (primaria, síncrona) e
+IndexedDB (espejo robusto contra cuotas y evictions). Cada capa guarda una
+marca de tiempo de su última escritura.
+
+- **Descargar copia completa** (Héroe → Exportar) lee la capa **más reciente**
+  de cada namespace: si el navegador vació `localStorage` (eviction de iOS,
+  "borrar datos del sitio") o si se llenó y no pudo guardar (cuota), la copia
+  sale con los datos que siguen vivos en IndexedDB, no vacía ni desfasada.
+- Si `localStorage` no puede guardar por cuota, la app lo avisa en consola
+  (una vez por namespace) y sigue escribiendo en IndexedDB.
+- Al importar una copia del Coach, el estado se escribe en **las dos capas**
+  (no solo en `localStorage`), así que no se pierde si el navegador limpia LS.
+
+> Las copias siguen siendo un archivo JSON que descargas tú: para uso personal
+> es suficiente. Si quieres backup automático, habría que subir el archivo a
+> un sitio (ver la sección de Appwrite).
+
+---
+
 ## 📱 instalar como PWA
 
 1. Abre la app en tu móvil

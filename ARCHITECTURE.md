@@ -288,6 +288,9 @@ const [isLevelUp, setIsLevelUp] = useState(false)
 ## LocalStorage Keys
 
 - `habitquest_data` - Datos completos del usuario (JSON.stringify)
+- `habitquest_coach` - Estado del Coach (objetivos, hábitos, plan, historial)
+- `habitquest_backup_meta` - Recordatorios + onboarding
+- `habitquest_data_ts` / `habitquest_coach_ts` - Marca de tiempo (epoch ms) de la última escritura de cada namespace. Sirve para saber si localStorage o IndexedDB tienen el dato **más reciente**: si el navegador evicciona LS o LS se llena (QuotaExceededError), la copia de seguridad usa la capa de IDB.
 - Theme guardado dentro de userData
 
 ---
