@@ -230,6 +230,9 @@ export interface CoachState {
   checkins: DayCheckIn[];
   plans: Record<string, DayPlan>; // por fecha
   notes: DayNote[]; // comentario del día (uno por fecha)
+  /** Último briefing matutino mostrado: fecha + texto final (motor o IA).
+   *  Evita regenerarlo y volver a llamar a la IA el mismo día. */
+  brief?: { date: string; text: string };
   counters: CoachCounters;
   memory: UserMemory;
   chat: ChatMessage[]; // conversación ACTIVA con el coach (en curso)

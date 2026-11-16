@@ -55,6 +55,7 @@ src/
     levels.ts          catálogo de comportamientos + curvas de nivel
     checkin.ts         check-in → capacidad → modo del día
     history.ts         adherencia/consistencia/rachas + bitácora (resumen del día)
+    briefing.ts        briefing matutino (evaluación de ayer + qué hacer hoy)
     progression.ts     avanzar/mantener/reducir nivel
     decomposer.ts      objetivo en lenguaje natural → Goal + comportamientos
     planner.ts         generación del plan diario con presupuesto
@@ -84,6 +85,8 @@ El estado v1 (`Habit` con `completedDates[]`) no sirve para adaptación. Nuevo
 - `DayNote`: comentario libre de un día ("qué pasó hoy"). Uno por fecha, en
   `CoachState.notes`. Es la bitácora que el usuario escribe a mano; el registro
   de hábitos (`logs`) lo genera la app.
+- `CoachState.brief`: último briefing matutino mostrado (`{date, text}`). Evita
+  regenerarlo y volver a llamar a la IA el mismo día.
 - `CoachCounters` / `UserMemory`: resiliencia, consolidados, motivos, insights.
 
 Migración v1→v2: los hábitos actuales del usuario se importan como
@@ -105,6 +108,8 @@ de rachas/XP.
 | `adherence` / `consistency` / `streakDays` | Métricas 7/30/90 |
 | `daySummary(logs, behaviors, goals, date)` | Resumen de un día para la bitácora: hábitos con su tipo de registro + progreso por objetivo (derivado de `Behavior.goalId`) |
 | `noteOn(notes, date)` / `upsertNote(notes, date, text)` | Leer y guardar (sobrescribir) el comentario de un día |
+| `morningBrief(state, today)` | Briefing matutino: qué se hizo ayer, rachas en juego y lo primero de hoy (`null` si no hay historial) |
+| `briefFacts(brief)` | Los hechos del briefing en texto plano: lo que se le pasa al LLM para que solo reformule |
 
 ## 6. Arquitectura de IA
 
@@ -182,6 +187,11 @@ a 10 min.
 - **Bitácora** (botón *📅 Historial* en la cabecera del Coach): calendario
   mensual con lo que se hizo cada día (hábitos y progreso por objetivo) y un
   comentario por día.
+- **Briefing matutino**: al abrir la app por primera vez un día, encima del
+  check-in, el coach evalúa ayer (qué hiciste, qué quedó pendiente y por qué),
+  avisa de la racha en juego y dice lo primero que tienes que hacer hoy. Lo
+  calcula el motor (`morningBrief`); con IA configurada, el modelo solo
+  reformula esos mismos hechos.
 - **Stats / Logros / Héroe**: se conservan; añaden adherencia 7/30/90,
   consistencia y "lo que el coach ha aprendido de ti".
 
@@ -243,4 +253,7 @@ a 10 min.
 - Bitácora diaria implementada (`src/components/HistoryOverlay.tsx` + `daySummary`
   / `upsertNote` en `src/engine/history.ts`): consulta por día y comentario por
   fecha (`CoachState.notes`).
+- Briefing matutino implementado (`src/engine/briefing.ts` + `src/services/ai/brief.ts`
+  + `src/components/MorningBrief.tsx`): una vez al día sobre el check-in, con
+  texto del motor y reformulación opcional por IA (`CoachState.brief`).
 - `npx tsc --noEmit` ✓ · tests `npm test` ✓ · `npm run build` ✓.

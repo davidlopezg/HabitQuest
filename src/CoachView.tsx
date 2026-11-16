@@ -42,6 +42,7 @@ import {
   getOrBuildPlan,
   handleCannot,
   levelDef,
+  morningBrief,
   REASON_LABEL,
   reasonDistribution,
   recommendLevel,
@@ -64,11 +65,13 @@ import {
 import type { ExtractedFact } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
 import HistoryOverlay from './components/HistoryOverlay.tsx';
+import MorningBriefCard from './components/MorningBrief.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/appwrite.ts';
 import { NS, savePrimary, idbGet } from './services/persistence.ts';
 import { proposeGoalPhases, type GoalProposal } from './services/ai/coach.ts';
+import { aiBrief } from './services/ai/brief.ts';
 import { getAIConfig } from './services/ai/config.ts';
 import type { BehaviorLevelDef } from './engine/index.ts';
 
@@ -412,7 +415,6 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   const showInsightCard =
     !insightDismissed && !!insightCard && insightSeenDate !== today && cs.logs.length >= 5;
 
-
   // Fase visible. Importante: hasta que hidratamos, `cs` puede estar vacío
   // aunque el usuario tenga objetivos (localStorage evictado, arranque en frío,
   // o estado que aún viene de IndexedDB/Appwrite). Si midiéramos sobre ese
@@ -427,6 +429,40 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
       : !checkinToday
         ? 'checkin'
         : 'plan';
+
+  // ---------- Briefing matutino ----------
+  // Se muestra una vez al día, al abrir la app (fase de check-in): el motor
+  // calcula los hechos y redacta el texto; la IA solo puede reformularlo.
+  const brief = useMemo(() => morningBrief(cs, today), [cs, today]);
+  const briefCached = cs.brief?.date === today ? cs.brief.text : null;
+  const [briefAI, setBriefAI] = useState<string | null>(null);
+  const [briefAILoading, setBriefAILoading] = useState(false);
+  const briefAskedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (phase !== 'checkin' || !brief) return;
+    if (cs.brief?.date === today) return; // ya hay briefing de hoy
+    if (briefAskedRef.current === today) return;
+    briefAskedRef.current = today;
+    // 1) Texto del motor: disponible al instante y cacheado para el día.
+    setCs((prev) =>
+      prev.brief?.date === today ? prev : { ...prev, brief: { date: today, text: brief.message } },
+    );
+    // 2) Versión con IA (solo si hay IA configurada). Si falla, se queda el
+    //    texto del motor: el briefing nunca es un error.
+    if (!getAIConfig().enabled) return;
+    setBriefAILoading(true);
+    void (async () => {
+      const text = await aiBrief(cs, brief);
+      setBriefAILoading(false);
+      if (text === brief.message) return;
+      setBriefAI(text);
+      setCs((prev) =>
+        prev.brief?.date === today ? { ...prev, brief: { date: today, text } } : prev,
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, brief, cs.brief?.date, today]);
 
   const xp = cs.counters.xp ?? 0;
   const coachLevel = Math.floor(xp / 100) + 1;
@@ -833,12 +869,21 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
 
   if (phase === 'checkin') {
     return (
-      <CheckinScreen
-        goals={activeGoals}
-        behaviors={allBehaviors}
-        showIntro={showIntro}
-        onSubmitted={submitCheckin}
-      />
+      <div className="space-y-5">
+        {brief && (
+          <MorningBriefCard
+            brief={brief}
+            text={briefAI ?? briefCached ?? brief.message}
+            pending={briefAILoading}
+          />
+        )}
+        <CheckinScreen
+          goals={activeGoals}
+          behaviors={allBehaviors}
+          showIntro={showIntro}
+          onSubmitted={submitCheckin}
+        />
+      </div>
     );
   }
 

@@ -29,6 +29,7 @@ import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
 import { adherence, streakDays, daySummary, noteOn, upsertNote, NOTE_MAX_LENGTH } from './history.ts';
+import { morningBrief, briefFacts } from './briefing.ts';
 import {
   applyDecomposed,
   emptyState,
@@ -1289,4 +1290,91 @@ test('upsertNote: no toca las notas de otros días y recorta al tope', () => {
 
   const long = upsertNote([], '2025-06-12', 'x'.repeat(NOTE_MAX_LENGTH + 50), '2025-06-12T20:00:00Z');
   assert.equal(long[0].text.length, NOTE_MAX_LENGTH);
+});
+
+// ---------- 12. Briefing matutino ----------
+
+function briefFixture() {
+  const state = emptyState();
+  state.goals.push({
+    id: 'g1',
+    raw: 'Quiero leer más',
+    title: 'Leer más',
+    area: 'learning',
+    createdAt: '2025-06-01',
+    status: 'active',
+    pipeline: [],
+  });
+  state.behaviors.push(beh('b1', 'g1', 'read', 1, '2025-06-01'));
+  state.behaviors.push(beh('b2', 'g1', 'walk', 1, '2025-06-01'));
+  // Tres días de racha con b1 y ayer se rompió con b2.
+  state.logs.push(
+    { date: '2025-06-08', behaviorId: 'b1', kind: 'full', minutes: 10, dayMode: 'normal', plannedMinutes: 10 },
+    { date: '2025-06-09', behaviorId: 'b1', kind: 'full', minutes: 10, dayMode: 'normal', plannedMinutes: 10 },
+    { date: '2025-06-10', behaviorId: 'b1', kind: 'full', minutes: 10, dayMode: 'normal', plannedMinutes: 10 },
+    { date: '2025-06-10', behaviorId: 'b2', kind: 'excused', minutes: 0, dayMode: 'normal', plannedMinutes: 20, reasonCode: 'tired' },
+  );
+  return state;
+}
+
+test('morningBrief: sin historial no hay briefing (usuario nuevo)', () => {
+  assert.equal(morningBrief(emptyState(), '2025-06-11'), null);
+});
+
+test('morningBrief: evalúa ayer, avisa de lo pendiente con su motivo y no culpa', () => {
+  const b = morningBrief(briefFixture(), '2025-06-11');
+  assert.ok(b);
+  assert.equal(b.done, 1);
+  assert.equal(b.total, 2);
+  assert.equal(b.missed.length, 1);
+  assert.equal(b.missed[0].name, 'Caminar');
+  assert.equal(b.missed[0].reason, 'cansancio');
+  assert.ok(b.message.includes('1 de 2'), 'resume ayer');
+  assert.ok(b.message.includes('Caminar'), 'nombra lo pendiente');
+  for (const palabra of ['fallaste', 'fracaso', 'fracasaste', 'no cumpliste', 'incumpliste']) {
+    assert.ok(!b.message.toLowerCase().includes(palabra), `no culpa: sin "${palabra}"`);
+  }
+});
+
+test('morningBrief: menciona la racha en juego y lo primero de hoy', () => {
+  const b = morningBrief(briefFixture(), '2025-06-11');
+  assert.ok(b);
+  assert.equal(b.streaks.length, 1);
+  assert.equal(b.streaks[0].days, 3);
+  assert.ok(b.message.includes('3 días seguidos'), 'menciona la racha');
+  assert.ok(b.actions.length > 0, 'propone acciones de hoy');
+  const a = b.actions[0];
+  assert.ok(a.minutes > 0 && a.minimalMinutes > 0);
+  assert.ok(a.minimalMinutes <= a.minutes, 'la versión mínima no supera a la completa');
+  assert.ok(b.message.includes('Lo primero de hoy'), 'dice qué hacer');
+});
+
+test('morningBrief: ayer completo → tono positivo, sin pendientes', () => {
+  const s = briefFixture();
+  s.logs.push({ date: '2025-06-10', behaviorId: 'b2', kind: 'full', minutes: 20, dayMode: 'normal', plannedMinutes: 20 });
+  const b = morningBrief(s, '2025-06-11');
+  assert.ok(b);
+  assert.equal(b.done, 2);
+  assert.equal(b.total, 2);
+  assert.equal(b.missed.length, 0);
+  assert.ok(b.message.includes('Buen día'), 'celebra el día completo');
+});
+
+test('morningBrief: sin registros de ayer lo dice sin culpar', () => {
+  const s = briefFixture();
+  s.logs = s.logs.filter((l) => l.date !== '2025-06-10');
+  const b = morningBrief(s, '2025-06-11');
+  assert.ok(b);
+  assert.equal(b.total, 0);
+  assert.ok(b.message.includes('no quedó nada registrado'));
+  assert.ok(!b.message.toLowerCase().includes('fallaste'));
+});
+
+test('morningBrief: los hechos que se le pasan a la IA no inventan cifras', () => {
+  const b = morningBrief(briefFixture(), '2025-06-11');
+  assert.ok(b);
+  const facts = briefFacts(b);
+  assert.ok(facts.includes('1 de 2 hábitos'), 'lleva el recuento de ayer');
+  assert.ok(facts.includes('Caminar'), 'lleva lo pendiente');
+  assert.ok(facts.includes('3 días seguidos'), 'lleva la racha');
 });
