@@ -68,6 +68,7 @@ export function emptyState(): CoachState {
     logs: [],
     checkins: [],
     plans: {},
+    notes: [],
     counters: emptyCounters(),
     memory: { reasonCounts: {}, weakWeekdays: [], lastInsights: [], bestSlotByBehavior: {} },
     chat: [],

@@ -57,11 +57,13 @@ import {
   streakDays,
   todayKey,
   toHHMM,
+  upsertNote,
   WEEKDAY_ES,
   weekdayOf,
 } from './engine/index.ts';
 import type { ExtractedFact } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
+import HistoryOverlay from './components/HistoryOverlay.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/appwrite.ts';
@@ -98,6 +100,11 @@ function loadStateFromSource(raw: string | null | undefined): CoachState {
     const behaviorsRaw = Array.isArray((parsed as CoachState).behaviors) ? (parsed as CoachState).behaviors : [];
     const logs = Array.isArray((parsed as CoachState).logs) ? (parsed as CoachState).logs : [];
     const checkins = Array.isArray((parsed as CoachState).checkins) ? (parsed as CoachState).checkins : [];
+    const notes = Array.isArray((parsed as CoachState).notes)
+      ? (parsed as CoachState).notes.filter(
+          (n) => n && typeof n.date === 'string' && typeof n.text === 'string',
+        )
+      : [];
     const plans = (parsed as CoachState).plans && typeof (parsed as CoachState).plans === 'object' ? (parsed as CoachState).plans : {};
     return {
       ...base,
@@ -106,6 +113,7 @@ function loadStateFromSource(raw: string | null | undefined): CoachState {
       logs,
       checkins,
       plans,
+      notes,
       // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
       // También re-detectar el templateId correcto si el hábito tiene uno obsoleto.
       behaviors: behaviorsRaw.map((b) => {
@@ -243,6 +251,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   const [newGoalText, setNewGoalText] = useState('');
   const [detailGoalId, setDetailGoalId] = useState<string | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [insightDismissed, setInsightDismissed] = useState(false);
   // --- Notificaciones (recordatorios contextuales) ---
   const [remindEnabled, setRemindEnabled] = useState(() => {
@@ -865,12 +874,19 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
         )}
         {plan?.coachNote && <p className="mt-2 text-xs text-rpg-text-secondary leading-relaxed">{plan.coachNote}</p>}
 
-        <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
           <button
             onClick={() => void enableReminders()}
             className={`text-[11px] px-3 py-1.5 rounded-full font-semibold ${remindEnabled ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-rpg-text-secondary'}`}
           >
             {remindEnabled ? '🔔 Avisos activados' : '🔕 Avisos desactivados'}
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="text-[11px] px-3 py-1.5 rounded-full font-semibold bg-white/5 text-rpg-text-secondary"
+            aria-label="Abrir la bitácora: ver lo que hiciste cada día"
+          >
+            📅 Historial
           </button>
           <button
             onClick={() => setInsightsOpen(true)}
@@ -1121,6 +1137,23 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
               setInsightsOpen(false);
               setChatOpen(true);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Bitácora: registro por días + comentario del día */}
+      <AnimatePresence>
+        {historyOpen && (
+          <HistoryOverlay
+            logs={cs.logs}
+            behaviors={cs.behaviors}
+            goals={cs.goals}
+            notes={cs.notes ?? []}
+            today={today}
+            onClose={() => setHistoryOpen(false)}
+            onSaveNote={(date, text) =>
+              setCs((prev) => ({ ...prev, notes: upsertNote(prev.notes ?? [], date, text) }))
+            }
           />
         )}
       </AnimatePresence>

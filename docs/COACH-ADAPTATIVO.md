@@ -54,7 +54,7 @@ src/
     time.ts            fechas/horas locales
     levels.ts          catálogo de comportamientos + curvas de nivel
     checkin.ts         check-in → capacidad → modo del día
-    history.ts         adherencia/consistencia/rachas
+    history.ts         adherencia/consistencia/rachas + bitácora (resumen del día)
     progression.ts     avanzar/mantener/reducir nivel
     decomposer.ts      objetivo en lenguaje natural → Goal + comportamientos
     planner.ts         generación del plan diario con presupuesto
@@ -81,6 +81,9 @@ El estado v1 (`Habit` con `completedDates[]`) no sirve para adaptación. Nuevo
   no rompe racha y cuenta al 50 % en adherencia.
 - `DayCheckIn`: energía/ánimo/concentración/estrés (1–10) + tiempo + intención.
 - `DayPlan`: modo del día + items con prioridad 🔴🟡🟢, versión y hora.
+- `DayNote`: comentario libre de un día ("qué pasó hoy"). Uno por fecha, en
+  `CoachState.notes`. Es la bitácora que el usuario escribe a mano; el registro
+  de hábitos (`logs`) lo genera la app.
 - `CoachCounters` / `UserMemory`: resiliencia, consolidados, motivos, insights.
 
 Migración v1→v2: los hábitos actuales del usuario se importan como
@@ -100,6 +103,8 @@ de rachas/XP.
 | `recordCompletion(state, input)` | Registrar log + plan + contadores |
 | `evaluateCompletion(...)` / `consolidationEvent(...)` | Eventos de gamificación |
 | `adherence` / `consistency` / `streakDays` | Métricas 7/30/90 |
+| `daySummary(logs, behaviors, goals, date)` | Resumen de un día para la bitácora: hábitos con su tipo de registro + progreso por objetivo (derivado de `Behavior.goalId`) |
+| `noteOn(notes, date)` / `upsertNote(notes, date, text)` | Leer y guardar (sobrescribir) el comentario de un día |
 
 ## 6. Arquitectura de IA
 
@@ -174,6 +179,9 @@ a 10 min.
   `HOY` (progreso + XP). Primera visita: onboarding "¿Qué quieres conseguir?".
 - **Nueva vista Check-in** matutino 20 s (4 sliders + 2 chips) → plan del día.
 - **Objetivo**: progreso del objetivo, comportamientos con nivel/adherencia.
+- **Bitácora** (botón *📅 Historial* en la cabecera del Coach): calendario
+  mensual con lo que se hizo cada día (hábitos y progreso por objetivo) y un
+  comentario por día.
 - **Stats / Logros / Héroe**: se conservan; añaden adherencia 7/30/90,
   consistencia y "lo que el coach ha aprendido de ti".
 
@@ -232,4 +240,7 @@ a 10 min.
 
 - Motor (`src/engine/`), UI del coach (`CoachView`) y chat con IA MiniMax
   (`services/ai/` + `CoachChat`) implementados.
+- Bitácora diaria implementada (`src/components/HistoryOverlay.tsx` + `daySummary`
+  / `upsertNote` en `src/engine/history.ts`): consulta por día y comentario por
+  fecha (`CoachState.notes`).
 - `npx tsc --noEmit` ✓ · tests `npm test` ✓ · `npm run build` ✓.

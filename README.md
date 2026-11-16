@@ -10,6 +10,7 @@
 > 🎯 **Hasta 3 objetivos** en curso, cada uno con su cola de hábitos; el plan del día reparte tiempo entre todos según tu energía.
 >
 > 🤖 **Chat con coach IA (MiniMax)**: habla con el coach, que replanifica tu día de verdad.
+> 📅 **Bitácora**: botón *📅 Historial* en el Coach → calendario con lo que hiciste cada día (hábitos y progreso por objetivo) y un comentario por día ("¿qué pasó hoy?").
 > 🔔 **Avisos inteligentes**: cuando llega la hora de un hábito, te avisa con la salida de la versión mínima.
 > 📤 **Exporta/importa los datos del Coach** desde Héroe. · 🗣️ **Planes de idiomas** específicos (semana 1 = abrir la app y 1 ejercicio).
 
@@ -208,6 +209,14 @@ npm run dev     # Desarrollo local
 npm run build   # Construir para producción
 npm run preview # Vista previa de producción
 ```
+
+---
+
+## 📝 Registro de cambios
+
+| Fecha | Cambio | Issue |
+|---|---|---|
+| 2026-11-16 | Bitácora del Coach: calendario mensual con lo hecho cada día y comentario por día | [#10](https://github.com/davidlopezg/HabitQuest/issues/10) |
 
 ---
 

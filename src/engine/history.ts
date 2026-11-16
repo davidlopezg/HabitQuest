@@ -9,7 +9,7 @@
  *   efecto "he fallado un día, lo he perdido todo").
  */
 
-import type { Behavior, BehaviorLogEntry, DayMode, ReasonCode } from './types.ts';
+import type { Behavior, BehaviorLogEntry, DayMode, DayNote, Goal, LogKind, ReasonCode } from './types.ts';
 import { addDays } from './time.ts';
 import { scheduledOn } from './schedule.ts';
 
@@ -139,4 +139,118 @@ export function reasonDistribution(
 /** Número de replanificaciones registradas como logs excused. */
 export function excusedCount(logs: BehaviorLogEntry[], behaviorId: string): number {
   return logs.filter((l) => l.behaviorId === behaviorId && l.kind === 'excused').length;
+}
+
+/* ── Bitácora: qué se hizo cada día ───────────────────────────────────────── */
+
+/** Un hábito dentro del resumen de un día. */
+export interface DayItemSummary {
+  behaviorId: string;
+  goalId: string; // '' si el hábito ya no existe
+  name: string;
+  icon: string;
+  kind: LogKind;
+  minutes: number;
+  plannedMinutes: number;
+  reasonCode?: ReasonCode;
+}
+
+/** Progreso de un objetivo ese día. */
+export interface GoalDaySummary {
+  goalId: string;
+  title: string;
+  done: number; // hábitos completados (full + minimal)
+  total: number; // hábitos con registro ese día
+}
+
+/** Resumen completo de un día. */
+export interface DaySummary {
+  date: string;
+  items: DayItemSummary[];
+  goals: GoalDaySummary[];
+  done: number; // hábitos completados del día
+  total: number; // hábitos registrados del día
+}
+
+/**
+ * Resumen de un día: qué hábitos se hicieron y cómo va cada objetivo.
+ *
+ * El objetivo NO tiene log propio: se deriva de sus hábitos (`Behavior.goalId`),
+ * así el dato de objetivo no puede desincronizarse del registro real.
+ */
+export function daySummary(
+  logs: BehaviorLogEntry[],
+  behaviors: Behavior[],
+  goals: Goal[],
+  date: string,
+): DaySummary {
+  const byId = new Map(behaviors.map((b) => [b.id, b]));
+  // Un hábito = un estado por día: si hay varios registros del mismo
+  // comportamiento (p. ej. replanificar y volver a marcarlo), gana el último.
+  const byBehavior = new Map<string, BehaviorLogEntry>();
+  for (const l of logs) {
+    if (l.date !== date) continue;
+    byBehavior.set(l.behaviorId, l);
+  }
+  const items: DayItemSummary[] = [];
+  for (const l of byBehavior.values()) {
+    const b = byId.get(l.behaviorId);
+    items.push({
+      behaviorId: l.behaviorId,
+      goalId: b?.goalId ?? '',
+      name: b?.name ?? 'Hábito eliminado',
+      icon: b?.icon ?? '•',
+      kind: l.kind,
+      minutes: l.minutes,
+      plannedMinutes: l.plannedMinutes,
+      reasonCode: l.reasonCode,
+    });
+  }
+  items.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+  const goalsSummary: GoalDaySummary[] = [];
+  for (const g of goals) {
+    const gItems = items.filter((i) => i.goalId === g.id);
+    if (gItems.length === 0) continue;
+    goalsSummary.push({
+      goalId: g.id,
+      title: g.title,
+      done: gItems.filter((i) => i.kind === 'full' || i.kind === 'minimal').length,
+      total: gItems.length,
+    });
+  }
+
+  return {
+    date,
+    items,
+    goals: goalsSummary,
+    done: items.filter((i) => i.kind === 'full' || i.kind === 'minimal').length,
+    total: items.length,
+  };
+}
+
+/* ── Comentarios del día ──────────────────────────────────────────────────── */
+
+/** Tope de caracteres del comentario de un día. */
+export const NOTE_MAX_LENGTH = 500;
+
+/** Comentario de un día (undefined si no hay). */
+export function noteOn(notes: DayNote[], date: string): DayNote | undefined {
+  return notes.find((n) => n.date === date);
+}
+
+/**
+ * Guarda el comentario de un día, sobrescribiendo el anterior si existía.
+ * Texto vacío = se borra la nota.
+ */
+export function upsertNote(
+  notes: DayNote[],
+  date: string,
+  text: string,
+  updatedAt: string = new Date().toISOString(),
+): DayNote[] {
+  const clean = text.trim().slice(0, NOTE_MAX_LENGTH);
+  const rest = notes.filter((n) => n.date !== date);
+  if (!clean) return rest;
+  return [...rest, { date, text: clean, updatedAt }];
 }
