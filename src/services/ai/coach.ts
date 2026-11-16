@@ -207,8 +207,20 @@ export async function chatWithCoach(
     ...history.slice(-12).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userText },
   ];
+  return askModel(messages, cfg, 25000);
+}
+
+/**
+ * Llamada al modelo con los mensajes dados. Lanza si falla (para que quien
+ * llame pueda caer a su modo local). `timeoutMs` corta la espera.
+ */
+export async function askModel(
+  messages: { role: string; content: string }[],
+  cfg: AIConfig = getAIConfig(),
+  timeoutMs = 25000,
+): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     // Directo: la key de MiniMax. Vía proxy: un token compartido opcional (la
