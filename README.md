@@ -131,44 +131,43 @@ Para usar sin la nube:
 
 ---
 
-## ☁️ Sincronizar objetivos del Coach en Supabase (opcional)
+## ☁️ Sincronizar objetivos del Coach en Appwrite (opcional)
 
-Si quieres que tus **objetivos** (Coach: goals, behaviors, plans, logs…) sobrevivan a un borrado de localStorage o aparezcan en otro dispositivo, conecta Supabase:
+Si quieres que tus **objetivos** (Coach: goals, behaviors, plans, logs…) sobrevivan a un borrado de localStorage o aparezcan en otro dispositivo, conecta Appwrite:
 
 ### 1. Crear el proyecto
-1. Ve a [supabase.com](https://supabase.com) → **New project**.
-2. Anota el **Project URL** y la **anon public key** (Project Settings → API).
+1. Ve a [appwrite.io](https://appwrite.io) → **New project** (región `fra` o la que prefieras).
+2. Anota el **Project ID** y el **Endpoint** (`https://cloud.appwrite.io/v1` en Appwrite Cloud).
 
-### 2. Crear la tabla
-SQL editor → New query → pega y ejecuta:
+### 2. Crear la base de datos y la tabla
+En la consola → **Databases → TablesDB → Create database** (`habitquest`) y dentro una tabla `state` con:
 
-```sql
-create table if not exists habitquest_state (
-  device_id  uuid primary key,
-  state      jsonb not null,
-  updated_at timestamptz not null default now()
-);
-alter table habitquest_state enable row level security;
-create policy "public_all" on habitquest_state
-  for all using (true) with check (true);
-```
+| Columna     | Tipo       | Required |
+| ----------- | ---------- | -------- |
+| `state`     | `longtext` | ✅       |
+| `updated_at`| `datetime` | ✅       |
 
-> ⚠️ La política `public_all` es para uso personal sin login. Si vas a publicar la app a terceros, sustitúyela por una política que requiera autenticación.
+Permisos de la tabla: `read("any")`, `create("any")`, `update("any")` (la app va sin sesión, como antes con Supabase).
+
+> ⚠️ Permisos `any` = uso personal sin login. Si publicas la app a terceros, usa sesiones de Appwrite y permisos por usuario. Además, registra el origen real en **Platforms → Web app** (p. ej. `davidlopezg.github.io`): con un hostname `*` cualquier web podría tocar tus datos.
 
 ### 3. Variables de entorno
-En `.env`:
+En `.env` (opcional: hay valores por defecto para el proyecto de arriba):
 
 ```env
-VITE_SUPABASE_URL="https://xxxxxxx.supabase.co"
-VITE_SUPABASE_ANON_KEY="eyJ..."
+VITE_APPWRITE_ENDPOINT="https://cloud.appwrite.io/v1"
+VITE_APPWRITE_PROJECT_ID="6afac1c0001bfeb71628"
+VITE_APPWRITE_DATABASE_ID="habitquest"
+VITE_APPWRITE_TABLE_ID="state"
 ```
 
 Sin esas variables la app sigue funcionando con localStorage — no rompe nada. La sincronización se activa sola en cuanto las pongas.
 
 ### 4. ¿Cómo funciona?
 - Cada dispositivo genera un UUID la primera vez y lo guarda en localStorage.
-- Cada cambio en el coach se sube a Supabase con un debounce de 500 ms.
-- Al abrir la app, si Supabase tiene objetivos y local está vacío (PWA reinstalada, navegador limpio, otro dispositivo), se adoptan los del remoto.
+- El estado se guarda en **una fila** de la tabla `state` cuyo `$id` es ese UUID.
+- Cada cambio en el coach se sube a Appwrite con un debounce de 500 ms.
+- Al abrir la app, si Appwrite tiene objetivos y local está vacío (PWA reinstalada, navegador limpio, otro dispositivo), se adoptan los del remoto.
 
 ---
 

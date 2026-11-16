@@ -64,7 +64,7 @@ import type { ExtractedFact } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
-import { fetchRemoteState, pushRemoteState } from './services/supabase.ts';
+import { fetchRemoteState, pushRemoteState } from './services/appwrite.ts';
 import { NS, savePrimary, idbGet } from './services/persistence.ts';
 import { proposeGoalPhases, type GoalProposal } from './services/ai/coach.ts';
 import { getAIConfig } from './services/ai/config.ts';
@@ -283,7 +283,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   // a IDB si LS parece vacío (goals=[]). Esto evita el flash de emptyState
   // y cualquier clic perdido durante la ventana async.
   /* Fin de la ventana en la que aún podrían aparecer objetivos de sesiones
-     anteriores: el pull desde Supabase ya respondió (o falló/fue timeout).
+     anteriores: el pull desde Appwrite ya respondió (o falló/fue timeout).
      Mientras sea false, no decidimos la fase, para no enseñar el onboarding
      a un usuario que sí tiene objetivos. */
   const [remoteResolved, setRemoteResolved] = useState(false);
@@ -324,12 +324,12 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cs));
     // Espejo a IndexedDB (debounced internamente) — sobrevive a evictions del navegador.
     savePrimary(NS.COACH, cs);
-    // Empujamos a Supabase con debounce (cambios rápidos no se duplican).
+    // Empujamos a Appwrite con debounce (cambios rápidos no se duplican).
     const t = setTimeout(() => { void pushRemoteState(cs); }, 500);
     return () => clearTimeout(t);
   }, [cs, hydrated]);
 
-  // Pull inicial desde Supabase: si el remoto tiene objetivos y el local está
+  // Pull inicial desde Appwrite: si el remoto tiene objetivos y el local está
   // vacío (porque se borró localStorage, se reinstaló la PWA o es otro dispositivo),
   // adoptamos el remoto. Si el local tiene objetivos y el remoto no, empujamos el local.
   useEffect(() => {
@@ -406,7 +406,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
 
   // Fase visible. Importante: hasta que hidratamos, `cs` puede estar vacío
   // aunque el usuario tenga objetivos (localStorage evictado, arranque en frío,
-  // o estado que aún viene de IndexedDB/Supabase). Si midiéramos sobre ese
+  // o estado que aún viene de IndexedDB/Appwrite). Si midiéramos sobre ese
   // estado vacío, mostraríamos el onboarding "¿Qué quieres conseguir?" un
   // instante y luego saltaríamos al plan: el panel aparecía "cada mañana" sin
   // que el usuario hubiera perdido nada. No mostramos ninguna fase hasta

@@ -270,7 +270,7 @@ export interface ExtractedFact {
   sourceDate: string;
 }
 
-/** Una conversación cerrada con el coach. Persistida en Supabase para que el
+/** Una conversación cerrada con el coach. Persistida en Appwrite para que el
  *  LLM pueda analizarlas en futuras sesiones (tendencias, motivos, ánimos).
  *  Solo guardamos metadata ligera + mensajes para análisis retrospectivo;
  *  la conversación activa (en curso) sigue viviendo en `state.chat`. */
