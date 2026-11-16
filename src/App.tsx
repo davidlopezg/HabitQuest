@@ -145,6 +145,8 @@ import {
   dismissReminder,
   daysSinceLastDownload,
   downloadFullBackup,
+  readSnapshotFresh,
+  flushPendingWrites,
   shouldShowReminder,
   idbGet,
   idbSet,
@@ -658,6 +660,7 @@ export default function App() {
       if (envelope && envelope.type === 'manual') {
         setUserData(envelope.data as UserData);
         savePrimary(NS.MANUAL, envelope.data);
+        flushPendingWrites();
         return;
       }
       if (envelope && envelope.type === 'full') {
@@ -667,8 +670,8 @@ export default function App() {
           savePrimary(NS.MANUAL, data.manual);
         }
         if (data.coach && typeof data.coach === 'object') {
-          try { localStorage.setItem('habitquest_coach', JSON.stringify(data.coach)); } catch { /* ignore */ }
           savePrimary(NS.COACH, data.coach);
+          flushPendingWrites();
         }
         // Restaurar desde copia cuenta como copia realizada: reseteamos el recordatorio.
         markManualDownloaded();
@@ -700,19 +703,19 @@ export default function App() {
 
   /** Backup completo: incluye manual + coach (objetivos/hábitos del Coach). */
   const exportFull = () => {
-    downloadFullBackup();
+    void downloadFullBackup();
     markManualDownloaded();
     setShowBackupReminder(false);
   };
 
   // --- Datos del Coach (v2, storage independiente) ---
   const exportCoach = () => {
-    const raw = localStorage.getItem('habitquest_coach');
-    let payload: unknown = {};
-    if (raw) {
-      try { payload = JSON.parse(raw); } catch { /* deja el objeto vacío */ }
-    }
-    downloadBackup('coach', payload);
+    // Lee la capa MÁS FRESCA (LS + IDB): si localStorage fue evictado o está
+    // desfasado por cuota, el archivo salía vacío o viejo (#8, #3).
+    void (async () => {
+      const payload = (await readSnapshotFresh(NS.COACH)) ?? {};
+      downloadBackup('coach', payload);
+    })();
   };
   const importCoach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -725,7 +728,8 @@ export default function App() {
           alert('Archivo de Coach inválido');
           return;
         }
-        localStorage.setItem('habitquest_coach', JSON.stringify(data));
+        savePrimary(NS.COACH, data);
+        flushPendingWrites();
         alert('Datos del Coach importados. Recargando…');
         window.location.reload();
         return;
@@ -733,7 +737,8 @@ export default function App() {
       if (envelope && envelope.type === 'full') {
         const data = envelope.data as { coach?: unknown };
         if (data.coach && typeof data.coach === 'object' && Array.isArray((data.coach as { behaviors?: unknown }).behaviors)) {
-          try { localStorage.setItem('habitquest_coach', JSON.stringify(data.coach)); } catch { /* ignore */ }
+          savePrimary(NS.COACH, data.coach);
+          flushPendingWrites();
           markManualDownloaded();
           alert('Copia completa (Coach) importada. Recargando…');
           window.location.reload();
@@ -748,7 +753,8 @@ export default function App() {
         try {
           const data = JSON.parse(ev.target?.result as string);
           if (typeof data !== 'object' || !data || !Array.isArray(data.behaviors)) throw new Error('formato');
-          localStorage.setItem('habitquest_coach', JSON.stringify(data));
+          savePrimary(NS.COACH, data);
+          flushPendingWrites();
           alert('Datos del Coach importados. Recargando…');
           window.location.reload();
         } catch {

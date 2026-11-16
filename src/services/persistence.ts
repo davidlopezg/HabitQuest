@@ -65,25 +65,89 @@ function saveMeta(meta: BackupMeta): void {
 
 // --- Core: load / save ------------------------------------------------------
 
+// --- Marcas de tiempo por capa ---------------------------------------------
+//
+// localStorage e IndexedDB guardan el MISMO dato, pero no siempre están
+// sincronizados:
+//   - LS se vacía (eviction de iOS/Safari, "borrar datos del sitio").
+//   - LS lanza QuotaExceededError y conserva un valor VIEJO mientras IDB
+//     guarda el nuevo.
+// Para saber cuál de las dos capas tiene el dato más reciente guardamos una
+// marca de tiempo por namespace en cada capa:
+//   - LS  → clave hermana `habitquest_<ns>_ts`
+//   - IDB → clave hermana `<ns>_ts`
+// El payload NO cambia de formato: los lectores directos (idbGet, CoachView)
+// siguen viendo el dato tal cual.
+
+function tsKey(namespace: string): string {
+  return `${namespace}_ts`;
+}
+
+/** Marca de tiempo de la escritura en localStorage (0 si no la hay). */
+function readLsTs(namespace: string): number {
+  try {
+    const n = Number(localStorage.getItem(tsKey(namespace)));
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Marca de tiempo de la escritura en IndexedDB (0 si no la hay). */
+async function readIdbTs(namespace: string): Promise<number> {
+  const n = Number(await idbGet<string>(tsKey(namespace)));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Un valor y de qué capa (y de cuándo) viene. */
+export interface LayerValue<T = unknown> {
+  data: T | null;
+  ts: number;
+  source: 'ls' | 'idb' | 'none';
+}
+
+/**
+ * Elige el valor MÁS RECIENTE entre las dos capas.
+ *
+ * Reglas:
+ *  - Si una capa está vacía, gana la otra (eviction de LS).
+ *  - Si ambas tienen datos, gana la de marca de tiempo más alta (cuota llena
+ *    en LS → IDB tiene el dato nuevo).
+ *  - Sin marcas de tiempo (instalaciones viejas), gana LS: es la primaria.
+ */
+export function pickFreshest<T>(ls: LayerValue<T>, idb: LayerValue<T>): LayerValue<T> {
+  const lsEmpty = ls.data === null || ls.data === undefined;
+  const idbEmpty = idb.data === null || idb.data === undefined;
+  if (lsEmpty && idbEmpty) return { data: null, ts: 0, source: 'none' };
+  if (lsEmpty) return idb;
+  if (idbEmpty) return ls;
+  return idb.ts > ls.ts ? idb : ls;
+}
+
 /** Lee de localStorage. Si no hay, intenta IDB como espejo. */
 export async function loadPrimary<T>(namespace: string): Promise<T | null> {
-  try {
-    const raw = localStorage.getItem(namespace);
-    if (raw) return JSON.parse(raw) as T;
-  } catch {
-    /* fallthrough a IDB */
-  }
-  const fromIdb = await idbGet<T>(namespace);
-  if (fromIdb) {
-    // Repoblamos localStorage para la próxima vez.
+  const ls: LayerValue<T> = {
+    data: readSnapshot(namespace) as T | null,
+    ts: readLsTs(namespace),
+    source: 'ls',
+  };
+  const idb: LayerValue<T> = {
+    data: (await idbGet<T>(namespace)) ?? null,
+    ts: await readIdbTs(namespace),
+    source: 'idb',
+  };
+  const fresh = pickFreshest(ls, idb);
+  if (fresh.data === null || fresh.data === undefined) return null;
+  if (fresh.source === 'idb') {
+    // Repoblamos localStorage para la próxima vez (si hay espacio).
     try {
-      localStorage.setItem(namespace, JSON.stringify(fromIdb));
+      localStorage.setItem(namespace, JSON.stringify(fresh.data));
+      localStorage.setItem(tsKey(namespace), String(fresh.ts));
     } catch {
       /* ignore */
     }
-    return fromIdb;
   }
-  return null;
+  return fresh.data;
 }
 
 /**
@@ -93,29 +157,48 @@ export async function loadPrimary<T>(namespace: string): Promise<T | null> {
  */
 const pendingIdbWrites = new Map<string, ReturnType<typeof setTimeout>>();
 /** Último payload pendiente de escribir a IDB por namespace. Necesario para
- *  poder vaciar el debounce al cerrar la app (flush) o al borrar (cancel). */
-const pendingIdbData = new Map<string, unknown>();
+ *  poder vaciar el debounce al cerrar la app (flush) o al borrar (cancel).
+ *  Guardamos también la marca de tiempo de la escritura para saber si el dato
+ *  de IDB es más nuevo que el de localStorage. */
+const pendingIdbData = new Map<string, { data: unknown; ts: number }>();
 const IDB_DEBOUNCE_MS = 800;
 
-function writeIdbNow(namespace: string, data: unknown): void {
+/** Avisamos UNA vez por namespace: si LS falla por cuota, el estado sigue
+ *  vivo en IndexedDB, pero la copia de seguridad usará esa capa. Sin este
+ *  aviso el fallo era invisible (#3). */
+const warnedQuota = new Set<string>();
+function warnQuotaOnce(namespace: string): void {
+  if (warnedQuota.has(namespace)) return;
+  warnedQuota.add(namespace);
+  console.warn(
+    `[habitquest] localStorage no pudo guardar "${namespace}" (¿cuota llena?). ` +
+      'El estado sigue en IndexedDB, pero la copia de seguridad usará esa capa.',
+  );
+}
+
+function writeIdbNow(namespace: string, data: unknown, ts: number): void {
   pendingIdbWrites.delete(namespace);
   pendingIdbData.delete(namespace);
   void idbSet(namespace, data);
+  void idbSet(tsKey(namespace), String(ts));
 }
 
 export function savePrimary(namespace: string, data: unknown): void {
   const json = JSON.stringify(data);
+  const ts = Date.now();
   // LocalStorage: síncrono e inmediato.
   try {
     localStorage.setItem(namespace, json);
+    localStorage.setItem(tsKey(namespace), String(ts));
   } catch {
     /* ignore — seguimos intentando IDB */
+    warnQuotaOnce(namespace);
   }
   // IDB: debounced. Si hay otra en vuelo para el mismo namespace, la reemplazamos.
   const existing = pendingIdbWrites.get(namespace);
   if (existing) clearTimeout(existing);
-  pendingIdbData.set(namespace, data);
-  const t = setTimeout(() => writeIdbNow(namespace, data), IDB_DEBOUNCE_MS);
+  pendingIdbData.set(namespace, { data, ts });
+  const t = setTimeout(() => writeIdbNow(namespace, data, ts), IDB_DEBOUNCE_MS);
   pendingIdbWrites.set(namespace, t);
 }
 
@@ -130,10 +213,10 @@ export function savePrimary(namespace: string, data: unknown): void {
  * Idempotente y sin excepciones: se puede llamar en cualquier momento.
  */
 export function flushPendingWrites(): void {
-  for (const [namespace, data] of pendingIdbData) {
+  for (const [namespace, entry] of pendingIdbData) {
     const t = pendingIdbWrites.get(namespace);
     if (t) clearTimeout(t);
-    writeIdbNow(namespace, data);
+    writeIdbNow(namespace, entry.data, entry.ts);
   }
 }
 
@@ -147,10 +230,12 @@ export function clearPrimary(namespace: string): void {
   pendingIdbData.delete(namespace);
   try {
     localStorage.removeItem(namespace);
+    localStorage.removeItem(tsKey(namespace));
   } catch {
     /* ignore */
   }
   void idbDel(namespace);
+  void idbDel(tsKey(namespace));
 }
 
 // --- Backup a archivo -------------------------------------------------------
@@ -222,11 +307,34 @@ export function readSnapshot(namespace: string): unknown {
   }
 }
 
+/**
+ * Lee el valor MÁS RECIENTE de un namespace, comparando localStorage e
+ * IndexedDB. Es la lectura que debe usarse para las copias de seguridad:
+ * `readSnapshot` solo mira LS y puede devolver un estado vacío (#8) o
+ * desfasado (#3).
+ */
+export async function readSnapshotFresh(namespace: string): Promise<unknown> {
+  const ls: LayerValue = {
+    data: readSnapshot(namespace),
+    ts: readLsTs(namespace),
+    source: 'ls',
+  };
+  const idb: LayerValue = {
+    data: (await idbGet(namespace)) ?? null,
+    ts: await readIdbTs(namespace),
+    source: 'idb',
+  };
+  return pickFreshest(ls, idb).data;
+}
+
 /** Construye y descarga un sobre 'full' con manual + coach en un solo archivo.
- *  Es la copia que cubre los objetivos/hábitos del Coach. */
-export function downloadFullBackup(): void {
-  const manual = readSnapshot(NS.MANUAL) ?? null;
-  const coach = readSnapshot(NS.COACH) ?? null;
+ *  Es la copia que cubre los objetivos/hábitos del Coach.
+ *
+ *  Lee la capa MÁS FRESCA de cada namespace (LS + IDB), así que la copia no
+ *  sale vacía si localStorage fue evictado ni desfasada si LS está lleno (#8, #3). */
+export async function downloadFullBackup(): Promise<void> {
+  const manual = (await readSnapshotFresh(NS.MANUAL)) ?? null;
+  const coach = (await readSnapshotFresh(NS.COACH)) ?? null;
   const envelope: BackupEnvelope = {
     type: 'full',
     format: 1,
