@@ -11,7 +11,7 @@
 
 import type { Behavior, BehaviorLogEntry, DayMode, DayNote, Goal, LogKind, ReasonCode } from './types.ts';
 import { addDays } from './time.ts';
-import { scheduledOn } from './schedule.ts';
+import { scheduledOn, weekStartKey, weeklyQuota } from './schedule.ts';
 
 export interface AdherenceSlice {
   eligible: number; // días elegibles (desde la introducción) en la ventana
@@ -89,36 +89,112 @@ export function consistency(
 }
 
 /**
- * Racha actual hasta `end` (inclusive). Respeta la agenda: los días no
- * programados se saltan (no rompen ni suman).
- * - full/minimal: continúa.
- * - excused: no rompe (neutral), con un tope de 3 seguidos para no abusar.
- * - miss o día sin registro (siendo programado): rompe.
+ * Reglas de la racha (aprendidas de Monkway — "cero culpa"):
+ *
+ * - GRACE: un día fallado NO rompe la racha si está "aislado" (al día
+ *   siguiente sí se hizo) y todavía queda margen de gracia (1 cada 30 días).
+ *   El día en curso (hoy) tampoco la rompe: hoy aún cuenta.
+ * - MESETA (plateau): a partir de PLATEAU_DAYS la racha se congela: ya no
+ *   crece, pero tampoco se pierde. El contador se queda en la meseta.
+ *
+ * Motivo: castigar un fallo aislado destruye la racha y con ella la
+ * motivation. La adherencia (7/30/90 días) sigue siendo la métrica seria.
  */
-export function streakDays(
+
+/** Días de racha a partir de los cuales entra la meseta. */
+export const PLATEAU_DAYS = 66;
+
+/** Cada cuántos días de racha se gana un día de gracia. */
+export const GRACE_WINDOW_DAYS = 30;
+
+export interface StreakInfo {
+  /** Días de racha (con gracias y meseta aplicados). */
+  days: number;
+  /** True si la racha alcanzó la meseta (ya no crece, pero se mantiene). */
+  plateau: boolean;
+  /** Días de gracia consumidos dentro de esta racha. */
+  graceDays: number;
+  /** True si el último día programado falló sin margen de gracia. */
+  broken: boolean;
+  /** True si el día en curso (end) está pendiente: la racha sigue viva. */
+  pendingToday: boolean;
+}
+
+/**
+ * Racha actual hasta `end` (inclusive) con la regla de gracia y meseta.
+ * Respeta la agenda: los días no programados se saltan (no rompen ni suman).
+ */
+export function streakInfo(
   logs: BehaviorLogEntry[],
   behavior: Behavior,
   end: string,
-): number {
-  let streak = 0;
+): StreakInfo {
+  let days = 0;
   let neutral = 0;
+  let graceDays = 0;
+  let broken = false;
+  let pendingToday = false;
+  // ¿El día inmediatamente posterior (en el tiempo) al que estamos mirando
+  // se completó? Para que un fallo "aislado" pueda ser perdonado.
+  let nextDayDone = false;
   const since = behavior.introducedAt;
+
   for (let d = 0; ; d++) {
     const key = addDays(end, -d);
     if (key < since) break;
     if (!scheduledOn(logs, behavior, key)) continue;
     const e = logOn(logs, behavior.id, key);
     if (e && (e.kind === 'full' || e.kind === 'minimal')) {
-      streak++;
+      days++;
       neutral = 0;
-    } else if (e && e.kind === 'excused') {
+      nextDayDone = true;
+      if (days >= PLATEAU_DAYS) {
+        // Meseta: la racha se congela aquí (no crece, no se rompe).
+        return { days: PLATEAU_DAYS, plateau: true, graceDays, broken: false, pendingToday };
+      }
+      continue;
+    }
+    if (e && e.kind === 'excused') {
+      // Neutral: no suma, no rompe (tope de 3 seguidos para no abusar).
       if (neutral >= 3) break;
       neutral++;
-    } else {
-      break; // miss o sin registro en un día programado
+      nextDayDone = false;
+      continue;
     }
+    // Fallo (miss) o día sin registro en un día programado.
+    if (d === 0) {
+      if (!e) {
+        // El día de HOY sigue abierto: la racha sigue viva ("hoy aún cuenta").
+        pendingToday = true;
+        nextDayDone = false;
+        continue;
+      }
+      // Miss explícito de HOY: el día está decidido y la racha se rompe.
+      broken = true;
+      break;
+    }
+    const graceBudget = 1 + Math.floor(days / GRACE_WINDOW_DAYS);
+    if (nextDayDone && graceDays < graceBudget) {
+      graceDays++; // hoy falla, pero ayer no: no rompe la racha
+      nextDayDone = false;
+      continue;
+    }
+    broken = true;
+    break;
   }
-  return streak;
+  return { days, plateau: false, graceDays, broken, pendingToday };
+}
+
+/**
+ * Racha actual (días). Es el accessor simple; usa `streakInfo` para el
+ * detalle (meseta, gracia, día pendiente).
+ */
+export function streakDays(
+  logs: BehaviorLogEntry[],
+  behavior: Behavior,
+  end: string,
+): number {
+  return streakInfo(logs, behavior, end).days;
 }
 
 /** Distribución de motivos ("no puedo") recientes. */
@@ -253,4 +329,39 @@ export function upsertNote(
   const rest = notes.filter((n) => n.date !== date);
   if (!clean) return rest;
   return [...rest, { date, text: clean, updatedAt }];
+}
+
+/**
+ * Racha en SEMANAS de un hábito "x veces por semana": cuántas semanas
+ * seguidas ha cumplido la cuota. Para un hábito diario no tiene sentido
+ * (ahí manda la racha de días), así que devuelve 0.
+ */
+export function weeklyStreakWeeks(
+  logs: BehaviorLogEntry[],
+  behavior: Behavior,
+  end: string,
+): number {
+  const s = behavior.schedule;
+  if (!s || s.type !== 'weekly') return 0;
+  let weeks = 0;
+  let monday = weekStartKey(end);
+  for (let i = 0; i < 120; i++) {
+    const sunday = addDays(monday, 6);
+    const upto = sunday > end ? end : sunday;
+    // La cuota de cada semana es la real (incluye lo arrastrado).
+    const quota = weeklyQuota(logs, behavior, upto);
+    let done = 0;
+    for (const l of logs) {
+      if (l.behaviorId !== behavior.id) continue;
+      if (l.date < monday || l.date > upto) continue;
+      if (l.kind === 'full' || l.kind === 'minimal') done++;
+    }
+    if (done >= quota) {
+      weeks++;
+      monday = addDays(monday, -7);
+    } else {
+      break;
+    }
+  }
+  return weeks;
 }

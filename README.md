@@ -7,6 +7,13 @@
 > El motor determinista vive en [`src/engine/`](src/engine) y está verificado con tests: `npm test`.
 >
 > ✨ **Tab Coach**: escribe tu objetivo → check-in matutino de 20 s → plan del día que se adapta (AHORA / PRÓXIMO / HOY) con botones EMPEZAR / NO PUEDO / versión mínima.
+> ⭐ **Prioridad del día (una sola)**: el coach propone la cosa que más importa y tú la confirmas o la cambias. El resto del plan es apoyo.
+> 🕊️ **Cero culpa**: un fallo aislado NO rompe la racha (día de gracia), hoy sin registrar todavía cuenta, y a los 66 días la racha entra en **meseta** (se congela, no se pierde).
+> 📊 **Revisión semanal (5 min)**: qué cerraste de verdad, qué racha está en juego, el único hábito que hay que vigilar y un plan de mañana (3 min).
+> 😌 **Mi ánimo**: la serie de check-ins se convierte en tendencia ("tu ánimo ha bajado estas fechas") y ajusta las sugerencias.
+> 🌙 **Cierre del día**: lo que queda pendiente se marca como excusado, no como fallo.
+> 🗓️ **Hábitos "x veces/semana"**: el coach los reparte en días fijos (3×/semana desde lunes = lunes, miércoles y viernes), no te martillean los 7 días; si te pasas un día aparece un **día de recuperación** al final de la semana, lo pendiente **se arrastra** a la semana siguiente (con tope) y su racha se cuenta en semanas.
+> 📥 **Cajón de hábitos**: suelta un hábito que te resuene sin decidir nada; luego lo añades a un objetivo y entra en su versión mínima.
 > 🎯 **Hasta 3 objetivos** en curso, cada uno con su cola de hábitos; el plan del día reparte tiempo entre todos según tu energía.
 >
 > 🤖 **Chat con coach IA (MiniMax)**: habla con el coach, que replanifica tu día de verdad.

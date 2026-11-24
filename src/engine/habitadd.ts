@@ -88,6 +88,21 @@ export function parseAddHabitRequest(text: string): AddHabitRequest | null {
 }
 
 /**
+ * Detecta a qué plantilla del catálogo corresponde un texto libre del usuario
+ * ("quiero estirarme" → mobility). Se usa en el cajón de hábitos candidatos.
+ */
+export function matchTemplateByText(
+  text: string,
+): { templateId: string; name: string; icon: string } | undefined {
+  const t = text.toLowerCase();
+  const matched = KEYWORD_MAP.find((k) => k.keywords.some((w) => t.includes(w)));
+  if (!matched) return undefined;
+  const tpl = templateOf(matched.templateId);
+  if (!tpl) return undefined;
+  return { templateId: tpl.id, name: tpl.name, icon: tpl.icon };
+}
+
+/**
  * Crea el comportamiento pedido dentro de un objetivo activo y devuelve el
  * estado actualizado (los planes existentes NO se tocan: llámalo después con
  * rebuildPlan si quieres regenerar el día conservando lo hecho).

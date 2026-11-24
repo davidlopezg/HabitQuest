@@ -19,7 +19,7 @@ import type {
   DayCheckIn,
   DaySlot,
 } from './types.ts';
-import { templateOf, resolveLevels } from './levels.ts';
+import { templateOf, resolveLevels, levelDef } from './levels.ts';
 import { addDays, toHHMM, weekdayOf } from './time.ts';
 import { decompose } from './decomposer.ts';
 import { modeForCheckin, capacityScore, dailyBudgetMinutes } from './checkin.ts';
@@ -28,10 +28,26 @@ import { recommendLevel } from './progression.ts';
 import { handleCannot, classifyReason } from './replanner.ts';
 import { analyzePatterns } from './patterns.ts';
 import { evaluateCompletion, consolidationEvent } from './gamification.ts';
-import { adherence, streakDays, daySummary, noteOn, upsertNote, NOTE_MAX_LENGTH } from './history.ts';
+import {
+  adherence,
+  streakDays,
+  streakInfo,
+  daySummary,
+  noteOn,
+  upsertNote,
+  NOTE_MAX_LENGTH,
+  PLATEAU_DAYS,
+  weeklyStreakWeeks,
+} from './history.ts';
+import { moodTrend } from './mood.ts';
+import { doneThisWeek, scheduledOn, weeklyDays, weeklyQuota } from './schedule.ts';
+import { addToInbox, dropInboxItem, pendingInbox, promoteInboxItem } from './inbox.ts';
+import { weeklyReview } from './review.ts';
+import { clearPriority, completePriority, priorityOn, setPriority, suggestPriority } from './priority.ts';
 import { morningBrief, briefFacts } from './briefing.ts';
 import {
   applyDecomposed,
+  closeDay,
   emptyState,
   getOrBuildPlan,
   rebuildGoalBehaviors,
@@ -1377,4 +1393,292 @@ test('morningBrief: los hechos que se le pasan a la IA no inventan cifras', () =
   assert.ok(facts.includes('1 de 2 hábitos'), 'lleva el recuento de ayer');
   assert.ok(facts.includes('Caminar'), 'lleva lo pendiente');
   assert.ok(facts.includes('3 días seguidos'), 'lleva la racha');
+});
+
+// ---------- 9. P0: racha sin culpa, prioridad del día, ánimo, revisión ----------
+
+test('racha: un fallo aislado NO rompe la racha (día de gracia)', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.introducedAt = '2025-06-14';
+  const end = '2025-06-21';
+  // 7 días completos y un fallo AISLADO en el 17.
+  for (const d of ['2025-06-14', '2025-06-15', '2025-06-16', '2025-06-18', '2025-06-19', '2025-06-20', '2025-06-21']) {
+    state.logs.push(log(d, b.id, 10, 10));
+  }
+  state.logs.push(log('2025-06-17', b.id, 0, 10));
+  const info = streakInfo(state.logs, b, end);
+  assert.equal(info.days, 7, 'la racha sigue viva: 7 días hechos');
+  assert.equal(info.graceDays, 1, 'el fallo aislado se perdonó con el día de gracia');
+  assert.equal(info.broken, false);
+});
+
+test('racha: dos fallos seguidos SÍ rompen (el margen es finito)', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  for (const d of ['2025-06-18', '2025-06-19', '2025-06-20', '2025-06-21']) {
+    state.logs.push(log(d, b.id, 10, 10));
+  }
+  state.logs.push(log('2025-06-16', b.id, 0, 10));
+  state.logs.push(log('2025-06-17', b.id, 0, 10));
+  const info = streakInfo(state.logs, b, '2025-06-21');
+  assert.equal(info.broken, true, 'dos fallos seguidos rompen la racha');
+  assert.equal(info.days, 4, 'la racha viva eran los 4 días seguidos de arriba');
+  assert.equal(info.graceDays, 1, 'solo se perdonó el primero (el aislado)');
+});
+
+test('racha: hoy todavía no ha terminado — la racha sigue viva (pendingToday)', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.introducedAt = '2025-06-17';
+  for (const d of ['2025-06-17', '2025-06-18', '2025-06-19', '2025-06-20']) {
+    state.logs.push(log(d, b.id, 10, 10));
+  }
+  const info = streakInfo(state.logs, b, '2025-06-21'); // hoy sin registro
+  assert.equal(info.days, 4);
+  assert.equal(info.pendingToday, true);
+  assert.equal(info.broken, false);
+});
+
+test('racha: meseta a los 66 días — se congela, no se rompe', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  const end = '2025-09-01';
+  for (let i = 0; i < 80; i++) {
+    state.logs.push(log(addDays(end, -(79 - i)), b.id, 10, 10));
+  }
+  const info = streakInfo(state.logs, b, end);
+  assert.equal(info.plateau, true);
+  assert.equal(info.days, PLATEAU_DAYS);
+  assert.equal(info.days, 66);
+});
+
+test('prioridad del día: se fija, se marca, se limpia y el motor propone una', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  const date = '2025-06-10';
+  const c = ci({ date, energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const withPlan = getOrBuildPlan(state, c).state;
+
+  const sug = suggestPriority(withPlan, date);
+  assert.ok(sug, 'el motor propone una prioridad a partir del plan');
+
+  let s = setPriority(withPlan, date, { text: 'Leer 10 páginas', behaviorId: b.id });
+  assert.equal(priorityOn(s, date)?.text, 'Leer 10 páginas');
+  assert.equal(priorityOn(s, date)?.done, false);
+
+  s = completePriority(s, date, true);
+  assert.equal(priorityOn(s, date)?.done, true);
+
+  s = clearPriority(s, date);
+  assert.equal(priorityOn(s, date), undefined);
+});
+
+test('prioridad del día: el motor propone la pendiente más importante', () => {
+  const state = stateWithGoal('Quiero ponerme en forma', '2025-06-01', 3);
+  const date = '2025-06-10';
+  const c = ci({ date, energy: 6, mood: 6, focus: 6, stress: 4, intention: 'advance' });
+  const withPlan = getOrBuildPlan(state, c).state;
+  const plan = withPlan.plans[date];
+  const first = plan.items.find((i) => i.status === 'pending')!;
+  const sug = suggestPriority(withPlan, date);
+  assert.ok(sug);
+  assert.equal(sug.text, first.label);
+});
+
+test('ánimo: serie de check-ins y tendencia (sube / baja)', () => {
+  const checkins: DayCheckIn[] = [];
+  for (let i = 0; i < 8; i++) {
+    const date = addDays('2025-06-20', -(7 - i));
+    checkins.push(ci({ date, mood: i < 4 ? 4 : 8, energy: 6, focus: 6, stress: 3 }));
+  }
+  const t = moodTrend(checkins, 14, '2025-06-20');
+  assert.equal(t.points.length, 8);
+  assert.ok(t.enough);
+  assert.ok((t.delta ?? 0) > 0, 'el ánimo sube en la segunda mitad');
+  assert.ok(t.label.includes('subido'));
+  assert.equal(moodTrend([], 14, '2025-06-20').enough, false);
+});
+
+test('revisión semanal: hechos, suggestions y plan de mañana', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  const end = '2025-06-20';
+  for (let i = 0; i < 5; i++) {
+    state.logs.push(log(addDays(end, -(4 - i)), b.id, 10, 10));
+  }
+  state.logs.push(log('2025-06-16', b.id, 0, 10));
+  state.checkins.push(ci({ date: '2025-06-20', mood: 7, energy: 7, focus: 7, stress: 3 }));
+  const r = weeklyReview(state, end);
+  assert.ok(r.planned >= 6);
+  assert.ok(r.completed >= 5);
+  assert.ok(r.rate > 0.5);
+  assert.ok(r.highlights.length >= 1);
+  assert.ok(r.suggestions.length >= 1);
+  assert.ok(r.tomorrowFocus.length >= 1, 'propone algo para mañana');
+});
+
+test('cierre del día: lo pendiente pasa a excusado y NO rompe la racha', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  const date = '2025-06-10';
+  const c = ci({ date, energy: 7, mood: 7, focus: 7, stress: 3, intention: 'advance' });
+  const withPlan = getOrBuildPlan(state, c).state;
+  assert.ok(withPlan.plans[date].items.some((i) => i.status === 'pending'));
+
+  const closed = closeDay(withPlan, date);
+  assert.ok(closed.plans[date].items.every((i) => i.status !== 'pending'));
+  const excused = closed.logs.filter((l) => l.date === date && l.kind === 'excused');
+  assert.ok(excused.length >= 1, 'se registra como excusado, no como fallo');
+  assert.equal(
+    closed.logs.filter((l) => l.date === date && l.kind === 'miss').length,
+    0,
+    'cerrar el día NO genera fallos',
+  );
+  // Con días previos hechos, la racha sigue viva tras cerrar el día.
+  const prev = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  prev.behaviors[0].introducedAt = '2025-06-09';
+  prev.logs.push(log('2025-06-09', prev.behaviors[0].id, 10, 10));
+  const withHistory = getOrBuildPlan(prev, c).state;
+  const closed2 = closeDay(withHistory, date);
+  const info = streakInfo(closed2.logs, closed2.behaviors[0], date);
+  assert.equal(info.days, 1, 'el día de ayer sigue contando');
+  assert.equal(info.broken, false, 'excusado no rompe la racha');
+});
+
+// ---------- 10. P1: frecuencia semanal + cajón de hábitos candidatos ----------
+
+test('frecuencia: el coach reparte los "x veces/semana" en días espaciados', () => {
+  assert.deepEqual(weeklyDays(3, 1), [1, 3, 5], 'lunes, miércoles, viernes');
+  assert.deepEqual(weeklyDays(2, 1), [1, 4], 'lunes y jueves');
+  assert.deepEqual(weeklyDays(7, 1), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(weeklyDays(0, 1), []);
+});
+
+test('frecuencia: un hábito 3x/semana solo aparece en sus días (no martillea)', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 3 };
+  b.introducedAt = '2025-06-02'; // lunes → lunes, miércoles, sábado
+  const scheduled: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const key = addDays('2025-06-02', i);
+    if (scheduledOn(state.logs, b, key)) scheduled.push(key);
+  }
+  assert.equal(scheduled.length, 3, 'solo 3 días de la semana');
+  assert.ok(scheduled.includes('2025-06-02'), 'lunes');
+  assert.ok(scheduled.includes('2025-06-04'), 'miércoles');
+  assert.ok(scheduled.includes('2025-06-06'), 'viernes');
+  assert.ok(!scheduled.includes('2025-06-03'), 'no aparece el martes');
+});
+
+test('frecuencia: al cumplir la cuota el hábito desaparece del resto de la semana', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 2 };
+  b.introducedAt = '2025-06-02';
+  state.logs.push(log('2025-06-02', b.id, 10, 10));
+  state.logs.push(log('2025-06-04', b.id, 10, 10));
+  assert.equal(doneThisWeek(state.logs, b.id, '2025-06-04'), 2);
+  // Ya cumplió: el viernes ya no se le planifica.
+  assert.equal(scheduledOn(state.logs, b, '2025-06-06'), false);
+});
+
+test('frecuencia: la racha de un hábito semanal se cuenta en SEMANAS', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 2 };
+  b.introducedAt = '2025-06-02';
+  // 2 semanas cumplidas (lunes 2 y miércoles 4; lunes 9 y miércoles 11)
+  for (const d of ['2025-06-02', '2025-06-04', '2025-06-09', '2025-06-11']) {
+    state.logs.push(log(d, b.id, 10, 10));
+  }
+  assert.equal(weeklyStreakWeeks(state.logs, b, '2025-06-11'), 2);
+  // Un hábito diario no tiene racha en semanas.
+  assert.equal(weeklyStreakWeeks(state.logs, stateWithGoal('Quiero leer más', '2025-06-01').behaviors[0], '2025-06-11'), 0);
+});
+
+test('cajón: se captura un hábito sin decidir y se promueve a objetivo', () => {
+  const state = stateWithGoal('Quiero ponerme en forma', '2025-06-01', 3);
+  const goalId = state.goals[0].id;
+  assert.equal(pendingInbox(state).length, 0);
+
+  let s = addToInbox(state, 'quiero estirarme por la tarde');
+  assert.equal(pendingInbox(s).length, 1);
+  const item = pendingInbox(s)[0];
+  assert.equal(item.templateId, 'mobility', 'detecta la plantilla del catálogo');
+  assert.equal(item.name, 'Movilidad');
+
+  const before = s.behaviors.length;
+  s = promoteInboxItem(s, item.id, goalId, '2025-06-10');
+  assert.equal(s.behaviors.length, before + 1, 'entra como hábito real');
+  assert.equal(pendingInbox(s).length, 0, 'sale del cajón al promoverse');
+  const nuevo = s.behaviors[s.behaviors.length - 1];
+  assert.equal(nuevo.goalId, goalId);
+  assert.equal(nuevo.currentLevel, 1, 'empieza en su versión mínima');
+  assert.ok(levelDef(nuevo), 'con su curva de niveles del catálogo');
+  assert.ok(resolveLevels(nuevo).length >= 3, 'y varios niveles que escalar');
+});
+
+test('cajón: un texto sin plantilla entra como hábito personalizado', () => {
+  const state = stateWithGoal('Quiero ordenarme', '2025-06-01', 3);
+  const goalId = state.goals[0].id;
+  let s = addToInbox(state, 'regar las plantas del balcón');
+  const item = pendingInbox(s)[0];
+  assert.equal(item.templateId, undefined);
+  s = promoteInboxItem(s, item.id, goalId, '2025-06-10');
+  const nuevo = s.behaviors[s.behaviors.length - 1];
+  assert.equal(nuevo.templateId, 'custom');
+  assert.equal(nuevo.name, 'Regar las plantas del balcón');
+});
+
+test('cajón: se puede descartar un elemento sin decidir', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  let s = addToInbox(state, 'meditar');
+  const item = pendingInbox(s)[0];
+  s = dropInboxItem(s, item.id);
+  assert.equal(pendingInbox(s).length, 0);
+  assert.equal(s.behaviors.length, state.behaviors.length, 'no crea hábitos');
+});
+
+test('frecuencia: si te pasas un día, el domingo aparece como día de RECUPERACIÓN', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 3 };
+  b.introducedAt = '2025-06-02'; // lunes → lunes, miércoles, viernes (+recuperación sáb/dom)
+  // Hizo lunes y miércoles; el viernes no lo hizo.
+  state.logs.push(log('2025-06-02', b.id, 10, 10));
+  state.logs.push(log('2025-06-04', b.id, 10, 10));
+  assert.equal(scheduledOn(state.logs, b, '2025-06-05'), false, 'jueves: ni de reparto ni último día útil');
+  assert.equal(scheduledOn(state.logs, b, '2025-06-06'), true, 'viernes: día de reparto');
+  // Sábado: aún quedan 2 días para 1 pendiente → no te avisa (no martillea).
+  assert.equal(scheduledOn(state.logs, b, '2025-06-07'), false, 'sábado: no es el último día útil');
+  // Domingo: último día y aún es posible cumplir la cuota (1 pendiente, 1 día).
+  assert.equal(scheduledOn(state.logs, b, '2025-06-08'), true, 'domingo: día de recuperación');
+});
+
+test('frecuencia: la cuota pendiente se ARRASTRA a la semana siguiente', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 3 };
+  b.introducedAt = '2025-06-02';
+  // Semana del 2: solo hizo el lunes (le faltan 2).
+  state.logs.push(log('2025-06-02', b.id, 10, 10));
+  const q1 = weeklyQuota(state.logs, b, '2025-06-04');
+  assert.equal(q1, 3, 'a mitad de semana la cuota es la de base');
+  // Semana siguiente (9 de junio): arrastra lo pendiente.
+  const q2 = weeklyQuota(state.logs, b, '2025-06-09');
+  assert.ok(q2 > 3, `la cuota de la semana siguiente sube (${q2})`);
+  assert.ok(q2 <= 5, 'pero sin dispara: el arrastre está acotado');
+});
+
+test('frecuencia: el arrastre está acotado — lo que no cabe se perdona', () => {
+  const state = stateWithGoal('Quiero leer más', '2025-06-01', 3);
+  const b = state.behaviors[0];
+  b.schedule = { type: 'weekly', timesPerWeek: 3 };
+  b.introducedAt = '2025-06-02';
+  // Semana del 2: no hizo NADA (le faltan 3).
+  const q = weeklyQuota(state.logs, b, '2025-06-09');
+  assert.ok(q <= 5, `con el tope de arrastre la cuota no se desboca (${q})`);
+  assert.ok(q >= 4, 'pero al menos se arrastra algo');
 });
