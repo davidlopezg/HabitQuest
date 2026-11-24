@@ -221,6 +221,39 @@ export interface UserMemory {
   bestSlotByBehavior: Record<string, DaySlot>;
 }
 
+/**
+ * La prioridad del día: UNA sola cosa que hace que el día valga.
+ *
+ * Regla de producto (aprendida de Monkway): el día no tiene una lista de
+ * intenciones, tiene UNA. Es lo que se decide por la mañana y lo que se
+ * marca al terminar. Opcionalmente se define qué es "suficiente" para no
+ * convertirla en una meta inalcanzable.
+ */
+export interface DayPriority {
+  date: string; // YYYY-MM-DD
+  text: string; // "Caminar 10 min" — redactada como acción, no como deseo
+  behaviorId?: string; // comportamiento del plan al que apunta (opcional)
+  done: boolean;
+  /** Qué cuenta como "hecho suficiente" (opcional). */
+  enough?: string;
+  updatedAt: string; // ISO
+}
+
+/**
+ * Un hábito candidato que el usuario suelta sin decidir (el "cajón").
+ * Todo lo que entra aquí es un HÁBITO (algo que quieres repetir), no una tarea.
+ */
+export interface InboxItem {
+  id: string;
+  text: string; // lo que escribió el usuario ("caminar por la tarde")
+  templateId?: string; // plantilla del catálogo detectada (si la hubo)
+  name: string; // nombre del hábito propuesto
+  icon: string;
+  createdAt: string; // ISO
+  status: 'pending' | 'promoted' | 'dropped';
+  goalId?: string; // objetivo al que se promovió
+}
+
 /** Estado completo y persistible del motor adaptativo. */
 export interface CoachState {
   version: number;
@@ -230,6 +263,10 @@ export interface CoachState {
   checkins: DayCheckIn[];
   plans: Record<string, DayPlan>; // por fecha
   notes: DayNote[]; // comentario del día (uno por fecha)
+  /** Prioridad del día, por fecha (UNA por día). */
+  priorities: Record<string, DayPriority>;
+  /** Cajón de hábitos candidatos (capturar sin decidir). */
+  inbox: InboxItem[];
   /** Último briefing matutino mostrado: fecha + texto final (motor o IA).
    *  Evita regenerarlo y volver a llamar a la IA el mismo día. */
   brief?: { date: string; text: string };

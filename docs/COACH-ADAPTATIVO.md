@@ -257,3 +257,124 @@ a 10 min.
   + `src/components/MorningBrief.tsx`): una vez al día sobre el check-in, con
   texto del motor y reformulación opcional por IA (`CoachState.brief`).
 - `npx tsc --noEmit` ✓ · tests `npm test` ✓ · `npm run build` ✓.
+
+---
+
+## 16. v3 — "Cero culpa": prioridad única, racha sin castigo, revisión semanal
+
+> Origen: análisis competitivo con **Monkway** (`docs/ANALISIS-MONKWAY.md`), P0.
+> Idea central: un día no es una lista de intenciones, tiene UNA prioridad; y
+> la racha no se rompe por un fallo aislado (no se notifica "has perdido la racha").
+
+### 16.1 Reglas nuevas de la racha (`src/engine/history.ts`)
+
+| Regla | Comportamiento |
+|---|---|
+| **Día de gracia** | Un fallo *aislado* (el día siguiente sí se hizo) no rompe la racha. Margen: 1 gracia por cada 30 días de racha. |
+| **Hoy todavía no ha terminado** | Si hoy no hay registro, la racha sigue viva (`pendingToday`). "Hoy aún cuenta. Un check y la racha sigue." |
+| **Miss explícito de hoy** | Si el usuario marca explícitamente "no lo hice", la racha se rompe (día decidido). |
+| **Meseta (plateau)** | A los 66 días la racha se congela: ya no crece, pero tampoco se pierde (`PLATEAU_DAYS`). |
+
+Métrica seria = adherencia 7/30/90 días (sigue siendo la que manda).
+
+### 16.2 La prioridad del día (`src/engine/priority.ts`)
+
+- `CoachState.priorities: Record<date, DayPriority>` (v3; los estados v2 se migran
+  con `priorities: {}`).
+- `suggestPriority()` propone el pendiente más importante del plan → el usuario
+  confirma o reescribe (1 solo campo, sin fricción).
+- `setPriority` / `completePriority` / `clearPriority` / `priorityOn`.
+- UI: `src/components/PriorityCard.tsx` (arriba del plan, antes de los objetivos).
+
+### 16.3 Ánimo como serie (`src/engine/mood.ts`)
+
+- `moodSeries(checkins, days, end)` → puntos `{date, mood, energy, focus, stress}`.
+- `moodTrend()` → media, delta entre mitades y frase ("tu ánimo ha subido estas fechas").
+- Se muestra en la tarjeta de prioridad y alimenta las sugerencias de la revisión.
+
+### 16.4 Revisión semanal + plan de mañana (`src/engine/review.ts`)
+
+- `weeklyReview(state, end, 7)` → cumplimiento, mejor racha, hábito que menos se
+  cumple, media de ánimo, comentarios escritos, 2–3 hechos y 1–3 sugerencias.
+- `tomorrowFocus` → hasta 3 propuestas para mañana (ritual "3 min").
+- UI: `src/components/WeeklyReviewOverlay.tsx` (botón **🗓️ Revisión** en la cabecera).
+
+### 16.5 Cierre del día (`closeDay` en `src/engine/index.ts`)
+
+- Lo pendiente pasa a **excusado** (no a fallo): cerrar el día no rompe la racha
+  ni ensucia los contadores de replanificación.
+- Botón **🌙 Cerrar el día** al final del plan.
+
+### 16.6 Archivos
+
+```
+src/engine/priority.ts        ← prioridad del día
+src/engine/mood.ts            ← serie de ánimo
+src/engine/review.ts          ← revisión semanal
+src/engine/history.ts         ← streakInfo(): gracia, meseta, pendingToday
+src/engine/index.ts           ← closeDay()
+src/components/PriorityCard.tsx
+src/components/WeeklyReviewOverlay.tsx
+```
+
+Tests nuevos en `src/engine/engine.test.ts` (racha sin culpa, prioridad, ánimo,
+revisión, cierre del día). Total: 151 tests ✓.
+
+---
+
+## 17. v3 — P1: frecuencia semanal real + cajón de hábitos candidatos
+
+> Origen: `docs/ANALISIS-MONKWAY.md` §4 (P1-a y P1-b). Sin objetos nuevos de
+> tipo "tarea": seguimos siendo una app de HÁBITOS.
+
+### 17.1 Frecuencia "x veces por semana" (P1-a)
+
+El modelo `BehaviorSchedule` ya soportaba `weekly`, pero faltaba lo importante:
+
+| Cambio | Dónde | Qué hace |
+|---|---|---|
+| `weeklyDays(n, anchor)` | `src/engine/schedule.ts` | Reparte el hábito en N días de la semana, espaciados y **deterministas** (3×/semana con anchor lunes → lunes, miércoles, sábado) |
+| `scheduledOn` | `src/engine/schedule.ts` | Un hábito semanal **solo aparece en sus días** (no martillea los 7) y desaparece en cuanto cumple la cuota |
+| `weeklyStreakWeeks()` | `src/engine/history.ts` | Para hábitos semanales la racha se cuenta en **semanas** ("3 semanas seguida"), no en días |
+| `frequencyLabel()` | `src/engine/schedule.ts` | Etiqueta legible: "Cada día", "L · X · V", "3×/semana" |
+| Chip "2/3 esta semana" | `src/CoachView.tsx` (`PlanBody`) | Progreso de la cuota dentro del item del plan |
+| Racha en semanas | Ficha del objetivo | En la ficha, los hábitos semanales muestran 🔥semanas en vez de 🔥días |
+
+La UI de la frecuencia (cada día / días concretos / x por semana) ya existía en la
+ficha del objetivo; ahora el motor la respeta de verdad al planificar.
+
+**Reglas finas del hábito semanal (cero culpa, pero sin perder nada):**
+
+| Regla | Comportamiento |
+|---|---|
+| Reparto fijo | Los días no cambian de semana en semana (anclados en el día de alta del hábito) → predecible |
+| Recuperación | Si te pasas un día, aparece un **día de recuperación** al final de la semana (solo el último día útil: días restantes = citas pendientes). No se pierde, pero no martillea |
+| Arrastre de cuota | Lo que no llegaste a cumplir la semana pasada **se te pide la siguiente**, con tope (+2 máx. y nunca por encima de lo alcanzable). Lo que no cabe, se perdona |
+| Racha | En semanas, y contando la cuota real de cada semana |
+
+Ejemplo (3×/semana, alta en lunes): reparto L-X-V, recuperación sábado/domingo,
+cuota real de la semana siguiente = 3 + lo pendiente (tope 5).
+
+### 17.2 Cajón de hábitos candidatos (P1-b)
+
+"El cajón" de Monkway, adaptado: **todo lo que entra es un hábito**, no una tarea.
+
+```
+src/engine/inbox.ts        ← addToInbox / pendingInbox / promoteInboxItem / dropInboxItem
+src/components/InboxCard.tsx
+CoachState.inbox: InboxItem[]   (v3; los estados previos migran con inbox: [])
+```
+
+- `addToInbox(text)`: captura en una línea, sin decidir nada ("decides después, no ahora").
+- Detección de plantilla con `matchTemplateByText()` (reutiliza el mapa de palabras
+  clave del chat): "quiero estirarme" → plantilla `mobility`.
+- `promoteInboxItem(itemId, goalId)`: entra en el objetivo con **nivel 1** (versión
+  mínima), su curva de niveles y su micro ritual; si no hay plantilla, entra como
+  `custom` con el texto del usuario.
+- `dropInboxItem(itemId)`: se descarta sin crear nada.
+- El plan del día se regenera al promover (`rebuildPlan`), conservando lo hecho.
+
+Tests nuevos (10): reparto semanal, disappearing tras la cuota, racha en semanas,
+día de recuperación, arrastre de cuota y su tope, captura/promoción/descart del
+cajón, y hábito `custom` desde texto libre.
+Total: **161 tests** ✓ · `tsc` ✓ · build ✓.

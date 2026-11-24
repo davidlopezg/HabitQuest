@@ -42,6 +42,10 @@ export * from './time.ts';
 export * from './levels.ts';
 export * from './checkin.ts';
 export * from './history.ts';
+export * from './priority.ts';
+export * from './mood.ts';
+export * from './review.ts';
+export * from './inbox.ts';
 export * from './briefing.ts';
 export * from './progression.ts';
 export * from './decomposer.ts';
@@ -63,13 +67,15 @@ export function emptyCounters(): CoachCounters {
 
 export function emptyState(): CoachState {
   return {
-    version: 2,
+    version: 3,
     goals: [],
     behaviors: [],
     logs: [],
     checkins: [],
     plans: {},
     notes: [],
+    priorities: {},
+    inbox: [],
     counters: emptyCounters(),
     memory: { reasonCounts: {}, weakWeekdays: [], lastInsights: [], bestSlotByBehavior: {} },
     chat: [],
@@ -341,6 +347,44 @@ function remapOrphanLogs(state: CoachState, orphanIds: Set<string>, fresh: Behav
     return l; // sin info suficiente para reasignar
   });
   return { ...state, logs };
+}
+
+/**
+ * "Cierra el día": lo que queda pendiente se registra como EXCUSADO (no como
+ * fallo), así la racha no se rompe por cerrar el día con cosas sin hacer.
+ *
+ * Regla de producto (Monkway): "Cierra la revisión y sigue con lo tuyo".
+ * Cerrar el día es un acto positivo: termina, se anota lo que pasó y mañana
+ * se regenera el plan.
+ */
+export function closeDay(state: CoachState, date: string): CoachState {
+  const plan = state.plans?.[date];
+  if (!plan) return state;
+  const pending = plan.items.filter((i) => i.status === 'pending');
+  if (pending.length === 0) return state;
+  const updatedPlan: DayPlan = {
+    ...plan,
+    items: plan.items.map((i) =>
+      i.status === 'pending'
+        ? { ...i, status: 'excused' as const, reasonCode: 'other' as const }
+        : i,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+  let s: CoachState = { ...state, plans: { ...state.plans, [date]: updatedPlan } };
+  // Registramos los logs a mano (no vía recordCompletion) para NO ensuciar los
+  // contadores de "replanificaciones" ni los motivos: cerrar el día no es un
+  // "no puedo", es una decisión.
+  const newLogs: BehaviorLogEntry[] = pending.map((it) => ({
+    date,
+    behaviorId: it.behaviorId,
+    kind: 'excused' as const,
+    minutes: 0,
+    dayMode: plan.mode,
+    plannedMinutes: it.minutes,
+  }));
+  s = { ...s, logs: [...s.logs, ...newLogs] };
+  return s;
 }
 
 /** Devuelve el plan de un día (lo genera si aún no existe). */

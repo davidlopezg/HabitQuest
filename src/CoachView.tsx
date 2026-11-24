@@ -28,21 +28,32 @@ import type {
 } from './engine/index.ts';
 import {
   addDays,
+  addToInbox,
   adherence,
   analyzePatterns,
   applyDecomposed,
   CATALOG,
   classifyReason,
+  clearPriority,
+  closeDay,
   collectAllFacts,
+  completePriority,
   consolidationEvent,
   decompose,
+  doneThisWeek,
+  dropInboxItem,
+  weeklyQuota,
   emptyState,
   evaluateCompletion,
   FACT_CATEGORY_META,
   getOrBuildPlan,
   handleCannot,
   levelDef,
+  moodTrend,
   morningBrief,
+  pendingInbox,
+  priorityOn,
+  promoteInboxItem,
   REASON_LABEL,
   reasonDistribution,
   recommendLevel,
@@ -52,20 +63,27 @@ import {
   removeGoal,
   postponeItem,
   resolveLevels,
+  setPriority,
   SLOT_DEFAULT_MIN,
   SLOT_LABEL,
   STRATEGY_TIPS,
   streakDays,
+  suggestPriority,
   todayKey,
+  weeklyStreakWeeks,
   toHHMM,
   upsertNote,
   WEEKDAY_ES,
   weekdayOf,
+  weeklyReview,
 } from './engine/index.ts';
 import type { ExtractedFact } from './engine/index.ts';
 import CoachChat from './CoachChat.tsx';
 import HistoryOverlay from './components/HistoryOverlay.tsx';
 import MorningBriefCard from './components/MorningBrief.tsx';
+import { InboxCard } from './components/InboxCard.tsx';
+import { PriorityCard } from './components/PriorityCard.tsx';
+import { WeeklyReviewOverlay } from './components/WeeklyReviewOverlay.tsx';
 import { computeLegacySeed, migrationMessage } from './migration.ts';
 import { pushAvailable, setupPush, syncPlanPush } from './push.ts';
 import { fetchRemoteState, pushRemoteState } from './services/appwrite.ts';
@@ -109,14 +127,22 @@ function loadStateFromSource(raw: string | null | undefined): CoachState {
         )
       : [];
     const plans = (parsed as CoachState).plans && typeof (parsed as CoachState).plans === 'object' ? (parsed as CoachState).plans : {};
+    // v3: la prioridad del día (una por fecha). Los estados v2 no la tienen.
+    const prioritiesRaw = (parsed as CoachState).priorities;
+    const priorities =
+      prioritiesRaw && typeof prioritiesRaw === 'object' && !Array.isArray(prioritiesRaw)
+        ? (prioritiesRaw as Record<string, CoachState['priorities'][string]>)
+        : {};
     return {
       ...base,
       ...(parsed as Partial<CoachState>),
+      version: 3,
       goals,
       logs,
       checkins,
       plans,
       notes,
+      priorities,
       // Rellenar la estrategia recomendada en hábitos antiguos (si no hay notas propias).
       // También re-detectar el templateId correcto si el hábito tiene uno obsoleto.
       behaviors: behaviorsRaw.map((b) => {
@@ -159,6 +185,12 @@ function loadStateFromSource(raw: string | null | undefined): CoachState {
         }
         return fixed;
       }),
+      // v3: cajón de hábitos candidatos (los estados previos no lo tienen).
+      inbox: Array.isArray((parsed as CoachState).inbox)
+        ? (parsed as CoachState).inbox.filter(
+            (i) => i && typeof i.id === 'string' && typeof i.text === 'string',
+          )
+        : [],
       counters: { ...base.counters, ...((parsed as CoachState).counters ?? {}) },
       memory: { ...base.memory, ...((parsed as CoachState).memory ?? {}) },
       chat: Array.isArray((parsed as CoachState).chat) ? (parsed as CoachState).chat : [],
@@ -255,6 +287,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   const [detailGoalId, setDetailGoalId] = useState<string | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [insightDismissed, setInsightDismissed] = useState(false);
   // --- Notificaciones (recordatorios contextuales) ---
   const [remindEnabled, setRemindEnabled] = useState(() => {
@@ -405,6 +438,26 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   // Insights deterministas del coach (se actualizan con cada día de uso).
   const insightsNow = useMemo(() => analyzePatterns(cs, { sinceDays: 28 }), [cs]);
   const insightCard = insightsNow[0] ?? null;
+
+  // Prioridad del día (UNA), estado de ánimo y revisión semanal.
+  const priority = priorityOn(cs, today);
+  const prioritySuggestion = useMemo(() => suggestPriority(cs, today), [cs, today]);
+  const mood = useMemo(() => moodTrend(cs.checkins, 14, today), [cs.checkins, today]);
+  const review = useMemo(() => weeklyReview(cs, today), [cs, today]);
+  const tomorrowPriority = priorityOn(cs, addDays(today, 1));
+
+  // Progreso semanal de los hábitos "x veces por semana" (para el chip "2/3").
+  const weeklyProgress = useMemo(() => {
+    const out: Record<string, { done: number; quota: number }> = {};
+    for (const b of cs.behaviors) {
+      if (b.schedule?.type !== 'weekly') continue;
+      out[b.id] = {
+        done: doneThisWeek(cs.logs, b.id, today),
+        quota: weeklyQuota(cs.logs, b, today),
+      };
+    }
+    return out;
+  }, [cs.behaviors, cs.logs, today]);
   const insightSeenDate = (() => {
     try {
       return localStorage.getItem('habitquest_insight_seen') ?? '';
@@ -710,8 +763,7 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
   }
 
   /** "Lo dejo para mañana": excusa solo este hábito hoy (la racha sigue). */
-  function postponeToday(item: PlanItem) {
-    const s = postponeItem(cs, today, item.behaviorId);
+  function postponeToday(item: PlanItem) {    const s = postponeItem(cs, today, item.behaviorId);
     setCs(s);
     setCannotItem(null);
     setCannotText('');
@@ -719,6 +771,28 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
       icon: '⏭️',
       text: 'Dejado para mañana. Hoy queda excusado (la racha continúa) y mañana vuelve a estar en tu plan automáticamente.',
     });
+  }
+
+  /** Fija (o reescribe) la prioridad del día. */
+  function setTodayPriority(text: string, behaviorId?: string) {
+    setCs((prev) => setPriority(prev, today, { text, behaviorId }));
+  }
+
+  /** Marca / desmarca la prioridad del día. */
+  function toggleTodayPriority() {
+    setCs((prev) => completePriority(prev, today, !priorityOn(prev, today)?.done));
+  }
+
+  /** Quita la prioridad del día (vuelve a "sin decidir"). */
+  function clearTodayPriority() {
+    setCs((prev) => clearPriority(prev, today));
+  }
+
+  /** Elige una propuesta como prioridad de MAÑANA (ritual "plan de mañana"). */
+  function setTomorrowPriority(text: string, behaviorId?: string) {
+    setCs((prev) => setPriority(prev, addDays(today, 1), { text, behaviorId }));
+    setReviewOpen(false);
+    setNotice({ icon: '⭐', text: 'Prioridad de mañana puesta. Mañana solo tienes que ejecutarla.' });
   }
 
   /** Introduce el siguiente hábito de la cola de UN objetivo concreto. */
@@ -934,6 +1008,13 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
             📅 Historial
           </button>
           <button
+            onClick={() => setReviewOpen(true)}
+            className="text-[11px] px-3 py-1.5 rounded-full font-semibold bg-white/5 text-rpg-text-secondary"
+            aria-label="Abrir la revisión semanal"
+          >
+            🗓️ Revisión
+          </button>
+          <button
             onClick={() => setInsightsOpen(true)}
             className="text-[11px] px-3 py-1.5 rounded-full font-semibold bg-white/5 text-rpg-text-secondary"
           >
@@ -948,6 +1029,16 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
           </p>
         )}
       </header>
+
+      {/* Prioridad del día (una sola cosa) */}
+      <PriorityCard
+        priority={priority}
+        suggestion={prioritySuggestion}
+        mood={mood}
+        onSet={setTodayPriority}
+        onToggle={toggleTodayPriority}
+        onClear={clearTodayPriority}
+      />
 
       {/* Insight del día (auto) */}
       {showInsightCard && insightCard && (
@@ -1040,6 +1131,23 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
         </p>
       </section>
 
+      {/* Cajón: hábitos candidatos (capturar sin decidir) */}
+      <InboxCard
+        items={pendingInbox(cs)}
+        goals={activeGoals}
+        defaultGoalId={activeGoals.length === 1 ? activeGoals[0].id : undefined}
+        onAdd={(text) => setCs((prev) => addToInbox(prev, text))}
+        onPromote={(itemId, goalId) => {
+          setCs((prev) => {
+            const next = promoteInboxItem(prev, itemId, goalId, today);
+            const ck = next.checkins.find((c) => c.date === today);
+            return ck ? rebuildPlan(next, ck) : next;
+          });
+          setNotice({ icon: '🌱', text: 'Añadido a tu plan. Empieza en su versión mínima.' });
+        }}
+        onDrop={(itemId) => setCs((prev) => dropInboxItem(prev, itemId))}
+      />
+
       <PlanBody
         plan={plan}
         behaviors={allBehaviors}
@@ -1055,9 +1163,32 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
         onFinish={finishItem}
         onCannot={setCannotItem}
         streakMax={Math.max(0, ...allBehaviors.map((b) => streakDays(cs.logs, b, today)))}
+        weeklyProgress={weeklyProgress}
         xp={xp}
         manualMissions={manualMissions}
       />
+
+      {/* Cierre del día: lo que no hiciste no rompe la racha */}
+      {plan && plan.items.some((i) => i.status === 'pending') && (
+        <section className="rpg-card p-4 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="text-sm font-bold">🌙 Cerrar el día</p>
+            <p className="text-[11px] text-rpg-text-secondary mt-0.5 leading-relaxed">
+              Lo que queda pendiente se marca como excusado: no rompe tu racha. Escribe en la bitácora
+              qué pasó y mañana el plan se regenera.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setCs((prev) => closeDay(prev, today));
+              setNotice({ icon: '🌙', text: 'Día cerrado. Mañana se regenera tu plan. Nadie te guarda rencor.' });
+            }}
+            className="px-3 py-2 rounded-xl text-xs font-bold bg-white/10 text-white shrink-0"
+          >
+            Cerrar
+          </button>
+        </section>
+      )}
 
       {/* Modal NO PUEDO */}
       <AnimatePresence>
@@ -1203,6 +1334,18 @@ export default function CoachView({ onGoManual, onOpenGuide, manualMissions }: C
         )}
       </AnimatePresence>
 
+      {/* Revisión semanal (5 min) + plan de mañana (3 min) */}
+      <AnimatePresence>
+        {reviewOpen && (
+          <WeeklyReviewOverlay
+            review={review}
+            tomorrowPriority={tomorrowPriority?.text}
+            onClose={() => setReviewOpen(false)}
+            onPickTomorrow={setTomorrowPriority}
+          />
+        )}
+      </AnimatePresence>
+
       <p className="text-center text-[10px] text-rpg-text-secondary pb-2">
         El objetivo no cambia · se adapta el camino.
         {onGoManual && (
@@ -1251,13 +1394,15 @@ interface PlanBodyProps {
   onCannot: (id: string | null) => void;
   streakMax: number;
   xp: number;
+  /** Progreso semanal de los hábitos "x veces/semana": {behaviorId: {done, quota}}. */
+  weeklyProgress?: Record<string, { done: number; quota: number }>;
   manualMissions?: ManualMissionsProps;
   /** Solo con varios objetivos: devuelve el título del objetivo de un item. */
   goalTitleOf?: (goalId: string) => string | undefined;
 }
 
 function PlanBody(props: PlanBodyProps) {
-  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot, manualMissions, goalTitleOf } = props;
+  const { plan, behaviors, now, openItem, setOpenItem, onFinish, onCannot, manualMissions, goalTitleOf, weeklyProgress } = props;
   const goalTag = (goalId?: string) => {
     if (!goalTitleOf || !goalId) return null;
     const t = goalTitleOf(goalId);
@@ -1323,6 +1468,11 @@ function PlanBody(props: PlanBodyProps) {
                       {nowRel}
                     </span>
                   )}
+                  {weeklyProgress?.[nowItem.behaviorId] && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold">
+                      {weeklyProgress[nowItem.behaviorId].done}/{weeklyProgress[nowItem.behaviorId].quota} esta semana
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -1353,7 +1503,14 @@ function PlanBody(props: PlanBodyProps) {
                   {it.label}
                   {goalTag(it.goalId)}
                 </p>
-                <p className="text-[10px] text-rpg-text-secondary">{toHHMM(it.startMinute)}</p>
+                <p className="text-[10px] text-rpg-text-secondary flex items-center gap-1.5">
+                  {toHHMM(it.startMinute)}
+                  {weeklyProgress?.[it.behaviorId] && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold">
+                      {weeklyProgress[it.behaviorId].done}/{weeklyProgress[it.behaviorId].quota} esta semana
+                    </span>
+                  )}
+                </p>
               </div>
               <ItemActions
                 item={it}
@@ -2445,8 +2602,12 @@ function GoalDetailOverlay({
                 {/* Métricas */}
                 <div className="mt-3 flex gap-4 text-center">
                   <div>
-                    <p className="text-sm font-bold text-orange-400">🔥{streak}</p>
-                    <p className="text-[9px] text-rpg-text-secondary uppercase">racha</p>
+                    <p className="text-sm font-bold text-orange-400">
+                      {b.schedule?.type === 'weekly' ? `🔥${weeklyStreakWeeks(logs, b, today)}` : `🔥${streak}`}
+                    </p>
+                    <p className="text-[9px] text-rpg-text-secondary uppercase">
+                      {b.schedule?.type === 'weekly' ? 'semanas' : 'racha'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-bold text-cyan-400">{a7}%</p>
